@@ -980,6 +980,10 @@ class GameController extends ChangeNotifier {
     // In hard mode, we already filtered unsafe placements or decided strategically; avoid noisy logs
 
     point.type = PieceType.goat;
+    if (gameMode == GameMode.pvc) {
+      final controller = goatPlayer == PlayerType.computer ? 'AI' : 'Human';
+      debugPrint("[confirm] Goat placed at ${point.x}, ${point.y} by $controller");
+    }
     placedGoats++;
     if (placedGoats < maxGoats) {
       currentTurn = PieceType.tiger;
@@ -1031,6 +1035,7 @@ class GameController extends ChangeNotifier {
   }
 
   void _executeMove(Point from, Point to) {
+    final moverType = from.type; // capture before mutation
     var result =
         boardType == BoardType.square
             ? square.SquareBoardLogic.executeMove(from, to, board)
@@ -1045,6 +1050,14 @@ class GameController extends ChangeNotifier {
     } else {
       selectedPiece = null;
       validMoves = [];
+    }
+    if (gameMode == GameMode.pvc) {
+      final isTigerMove = moverType == PieceType.tiger;
+      final controller = isTigerMove
+          ? (tigerPlayer == PlayerType.computer ? 'AI' : 'Human')
+          : (goatPlayer == PlayerType.computer ? 'AI' : 'Human');
+      final side = isTigerMove ? 'Tiger' : 'Goat';
+      debugPrint('[confirm] $controller $side moved from ${from.x}, ${from.y} to ${to.x}, ${to.y}');
     }
     notifyListeners();
   }
