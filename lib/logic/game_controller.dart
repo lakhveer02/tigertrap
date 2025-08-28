@@ -438,6 +438,40 @@ class GameController extends ChangeNotifier {
       }
     }
 
+    // Hard mode priority 4: prefer placements that INCREASE the number of blocked tigers
+    if (difficulty == Difficulty.hard && boardType == BoardType.square) {
+      final int blockedNow = _countBlockedTigersOn(board);
+      Point? bestBlockIncPoint;
+      int bestBlocked = blockedNow;
+      int bestMobility = _calculateTigerMobility(board);
+      for (final p in emptyPoints) {
+        if (unsafeMoveHistory.contains('${p.x},${p.y}')) continue;
+        final clone = _cloneSquareBoard(board);
+        final c = clone[p.x][p.y];
+        c.type = PieceType.goat;
+        // Skip if immediately allows capture
+        if (_tigerCanCaptureAfter(clone, c)) continue;
+        final int blockedAfter = _countBlockedTigersOn(clone);
+        if (blockedAfter > bestBlocked) {
+          bestBlocked = blockedAfter;
+          bestBlockIncPoint = p;
+          bestMobility = _calculateTigerMobility(clone);
+        } else if (blockedAfter == bestBlocked && blockedAfter > blockedNow) {
+          // Tie-breaker: lower tiger mobility
+          final int mob = _calculateTigerMobility(clone);
+          if (mob < bestMobility) {
+            bestBlockIncPoint = p;
+            bestMobility = mob;
+          }
+        }
+      }
+      if (bestBlockIncPoint != null) {
+        debugPrint("[hard AI] Placing to increase blocked tigers at ${bestBlockIncPoint.x}, ${bestBlockIncPoint.y}");
+        _placeGoat(bestBlockIncPoint);
+        return;
+      }
+    }
+
     // Choose best placement by board type
     Point? bestPlacement;
     double bestScore = double.negativeInfinity;
@@ -711,6 +745,40 @@ class GameController extends ChangeNotifier {
       if (bestUnsafeBlockMove != null) {
         debugPrint("[hard AI] Blocking tiger jump (unsafe fallback) by moving from ${bestUnsafeBlockMove['from']!.x},${bestUnsafeBlockMove['from']!.y} to ${bestUnsafeBlockMove['to']!.x},${bestUnsafeBlockMove['to']!.y}");
         _executeMove(bestUnsafeBlockMove['from']!, bestUnsafeBlockMove['to']!);
+        currentTurn = PieceType.tiger;
+        return;
+      }
+    }
+
+    // Hard mode priority: prefer moves that INCREASE the number of blocked tigers
+    if (difficulty == Difficulty.hard && boardType == BoardType.square) {
+      final int blockedNow = _countBlockedTigersOn(board);
+      Map<String, Point>? bestBlockMove;
+      int bestBlocked = blockedNow;
+      int bestMobility = _calculateTigerMobility(board);
+      for (final move in allMoves) {
+        final boardClone = _cloneSquareBoard(board);
+        final from = boardClone[move['from']!.x][move['from']!.y];
+        final to = boardClone[move['to']!.x][move['to']!.y];
+        from.type = PieceType.empty;
+        to.type = PieceType.goat;
+        if (_tigerCanCaptureAfter(boardClone, to)) continue;
+        final int blockedAfter = _countBlockedTigersOn(boardClone);
+        if (blockedAfter > bestBlocked) {
+          bestBlocked = blockedAfter;
+          bestBlockMove = move;
+          bestMobility = _calculateTigerMobility(boardClone);
+        } else if (blockedAfter == bestBlocked && blockedAfter > blockedNow) {
+          final int mob = _calculateTigerMobility(boardClone);
+          if (mob < bestMobility) {
+            bestBlockMove = move;
+            bestMobility = mob;
+          }
+        }
+      }
+      if (bestBlockMove != null) {
+        debugPrint("[hard AI] Moving to increase blocked tigers from ${bestBlockMove['from']!.x}, ${bestBlockMove['from']!.y} to ${bestBlockMove['to']!.x}, ${bestBlockMove['to']!.y}");
+        _executeMove(bestBlockMove['from']!, bestBlockMove['to']!);
         currentTurn = PieceType.tiger;
         return;
       }
