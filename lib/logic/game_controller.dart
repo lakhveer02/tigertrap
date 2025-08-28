@@ -290,6 +290,32 @@ class GameController extends ChangeNotifier {
       }
     }
 
+    // Hard mode priority 3: if any placement immediately blocks all tigers, do it
+    if (difficulty == Difficulty.hard) {
+      if (boardType == BoardType.square) {
+        for (final p in emptyPoints) {
+          final clone = _cloneSquareBoard(board);
+          clone[p.x][p.y].type = PieceType.goat;
+          if (_areAllTigersBlockedOn(clone)) {
+            debugPrint("[hard AI] Placement traps tigers; placing at ${p.x}, ${p.y}");
+            _placeGoat(p);
+            return;
+          }
+        }
+      } else if (boardConfig != null) {
+        for (final p in emptyPoints) {
+          final cfgClone = _cloneAaduPuliConfig(boardConfig!);
+          final cPoint = cfgClone.nodes.firstWhere((n) => n.id == p.id);
+          cPoint.type = PieceType.goat;
+          if (_areAllTigersBlockedOnConfig(cfgClone)) {
+            debugPrint("[hard AI] Placement traps tigers (Aadu Puli); placing at ${p.x}, ${p.y}");
+            _placeGoat(p);
+            return;
+          }
+        }
+      }
+    }
+
     // Choose best placement by board type
     Point? bestPlacement;
     double bestScore = double.negativeInfinity;
@@ -298,13 +324,7 @@ class GameController extends ChangeNotifier {
       for (var point in emptyPoints) {
         if (unsafeMoveHistory.contains('${point.x},${point.y}')) continue;
         final isSafe = _isGoatPositionSafe(point);
-        if (difficulty == Difficulty.hard && !isSafe) {
-          if (!unsafeMoveHistory.contains('${point.x},${point.y}')) {
-            debugPrint("[hard AI] Skipping unsafe position at ${point.x}, ${point.y}");
-            unsafeMoveHistory.add('${point.x},${point.y}');
-          }
-          continue;
-        }
+        if (difficulty == Difficulty.hard && !isSafe) continue;
 
         point.type = PieceType.goat; // simulate
         double score = 0;
@@ -708,11 +728,7 @@ class GameController extends ChangeNotifier {
       return;
     }
 
-    if (!_isGoatPositionSafe(point)) {
-      debugPrint(
-        "Warning: Placing goat in unsafe position at ${point.x},${point.y}",
-      );
-    }
+    // In hard mode, we already filtered unsafe placements or decided strategically; avoid noisy logs
 
     point.type = PieceType.goat;
     placedGoats++;
