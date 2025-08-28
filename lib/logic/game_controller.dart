@@ -277,8 +277,8 @@ class GameController extends ChangeNotifier {
     // Hard mode priority 1: block imminent tiger jumps by occupying landing squares
     if (difficulty == Difficulty.hard) {
       final threats = _getCurrentJumpThreats();
-      // Prefer safe landing blocks first
-      Point? bestSafeBlock;
+      // Collect SAFE landing blocks, then choose the best-scoring one
+      final List<Point> safeLandingBlocks = [];
       for (final t in threats) {
         final landing = t.landing;
         if (landing.type != PieceType.empty) continue;
@@ -287,33 +287,59 @@ class GameController extends ChangeNotifier {
           final landC = bClone[landing.x][landing.y];
           landC.type = PieceType.goat;
           if (!_tigerCanCaptureAfter(bClone, landC)) {
-            bestSafeBlock = landing;
-            break;
+            safeLandingBlocks.add(landing);
           }
         } else if (boardConfig != null) {
           final cfg = _cloneAaduPuliConfig(boardConfig!);
           final landC = cfg.nodes.firstWhere((n) => n.id == landing.id);
           landC.type = PieceType.goat;
           if (!_tigerCanCaptureAfterConfig(cfg, landC)) {
-            bestSafeBlock = landing;
-            break;
+            safeLandingBlocks.add(landing);
           }
         }
       }
-      if (bestSafeBlock != null) {
-        debugPrint("[hard AI] Blocking tiger jump by placing at ${bestSafeBlock.x}, ${bestSafeBlock.y}");
-        _placeGoat(bestSafeBlock);
-        return;
-      }
-      // If none are safe, still block the first available landing to prevent immediate capture
-      for (final t in threats) {
-        final landing = t.landing;
-        if (landing.type == PieceType.empty) {
-          debugPrint("[hard AI] Blocking tiger jump by placing at ${landing.x}, ${landing.y}");
-          _placeGoat(landing);
+      if (safeLandingBlocks.isNotEmpty) {
+        Point? bestSafeBlock;
+        double bestBlockScore = double.negativeInfinity;
+        if (boardType == BoardType.square) {
+          for (final landing in safeLandingBlocks) {
+            final bClone = _cloneSquareBoard(board);
+            final landC = bClone[landing.x][landing.y];
+            landC.type = PieceType.goat;
+            double score = 0;
+            score += _calculateOuterWallScore(landing) * 600;
+            score += _calculateBlockScoreForBoard(bClone, landC) * 300;
+            score += _clusterBonus(bClone, landC) * 150;
+            final int initialMobility = _calculateTigerMobility(board);
+            final int reducedMobility = _calculateTigerMobility(bClone);
+            score += (reducedMobility < initialMobility) ? 200.0 : 0.0;
+            if (score > bestBlockScore) {
+              bestBlockScore = score;
+              bestSafeBlock = landing;
+            }
+          }
+        } else if (boardConfig != null) {
+          for (final landing in safeLandingBlocks) {
+            final cfg = _cloneAaduPuliConfig(boardConfig!);
+            final landC = cfg.nodes.firstWhere((n) => n.id == landing.id);
+            landC.type = PieceType.goat;
+            double score = 0;
+            score += _clusterBonusConfig(cfg, landC) * 150;
+            score += _reducesTigerMobilityConfig(cfg, landC) ? 200.0 : 0.0;
+            score += _calculateBlockScoreConfig(cfg, landC) * 300;
+            if (score > bestBlockScore) {
+              bestBlockScore = score;
+              bestSafeBlock = landing;
+            }
+          }
+        }
+        if (bestSafeBlock != null) {
+          debugPrint("[hard AI] Blocking tiger jump by placing at ${bestSafeBlock.x}, ${bestSafeBlock.y}");
+          _placeGoat(bestSafeBlock);
           return;
         }
       }
+      // If there are no safe landing blocks, do NOT place on an unsafe landing; continue with other priorities
     }
 
     // Hard mode priority 2: on square board, cover outer walls before center
@@ -427,13 +453,31 @@ class GameController extends ChangeNotifier {
       return;
     }
 
-    // Fallback: safest available
-    Point safestPosition = emptyPoints.reduce((a, b) {
+    // Fallback: safest available (but never place where capture is immediately possible)
+    final safeEmpties = <Point>[];
+    if (boardType == BoardType.square) {
+      for (final p in emptyPoints) {
+        final clone = _cloneSquareBoard(board);
+        final c = clone[p.x][p.y];
+        c.type = PieceType.goat;
+        if (!_tigerCanCaptureAfter(clone, c)) safeEmpties.add(p);
+      }
+    } else if (boardConfig != null) {
+      for (final p in emptyPoints) {
+        final cfg = _cloneAaduPuliConfig(boardConfig!);
+        final c = cfg.nodes.firstWhere((n) => n.id == p.id);
+        c.type = PieceType.goat;
+        if (!_tigerCanCaptureAfterConfig(cfg, c)) safeEmpties.add(p);
+      }
+    }
+
+    final candidates = safeEmpties.isNotEmpty ? safeEmpties : emptyPoints;
+    Point safestPosition = candidates.reduce((a, b) {
       double riskA = _evaluateRisk(a);
       double riskB = _evaluateRisk(b);
       return riskA < riskB ? a : b;
     });
-    debugPrint("[hard AI] No valid positions found, placing goat at safest position ${safestPosition.x}, ${safestPosition.y}");
+    debugPrint("[hard AI] No preferred placements; choosing safest position ${safestPosition.x}, ${safestPosition.y}");
     _placeGoat(safestPosition);
   }
 
