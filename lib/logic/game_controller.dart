@@ -16,6 +16,13 @@ enum GameMode { pvp, pvc }
 
 enum PlayerSide { tiger, goat }
 
+class _JumpThreat {
+  final Point tiger;
+  final Point victim;
+  final Point landing;
+  const _JumpThreat({required this.tiger, required this.victim, required this.landing});
+}
+
 class GameController extends ChangeNotifier {
   List<List<Point>> board = [];
   int placedGoats = 0;
@@ -242,6 +249,7 @@ class GameController extends ChangeNotifier {
   }
 
   void _goatPlacementAI() {
+    // Collect all empty positions depending on board type
     List<Point> emptyPoints = [];
     if (boardType == BoardType.square) {
       for (var row in board) {
@@ -260,71 +268,129 @@ class GameController extends ChangeNotifier {
       return;
     }
 
+    // Hard mode priority 1: block imminent tiger jumps by occupying landing squares
+    if (difficulty == Difficulty.hard) {
+      final threats = _getCurrentJumpThreats();
+      for (final t in threats) {
+        final landing = t.landing;
+        if (landing.type == PieceType.empty) {
+          // In hard mode, block even if not perfectly safe if it's the only way to stop capture
+          debugPrint("[hard AI] Blocking tiger jump by placing at ${landing.x}, ${landing.y}");
+          _placeGoat(landing);
+          return;
+        }
+      }
+    }
+
+    // Hard mode priority 2: on square board, cover outer walls before center
+    if (difficulty == Difficulty.hard && boardType == BoardType.square) {
+      final wallEmpties = emptyPoints.where(_isEdgeSquare).toList();
+      if (wallEmpties.isNotEmpty) {
+        emptyPoints = wallEmpties;
+      }
+    }
+
+    // Hard mode priority 3: if any placement immediately blocks all tigers, do it
+    if (difficulty == Difficulty.hard) {
+      if (boardType == BoardType.square) {
+        for (final p in emptyPoints) {
+          final clone = _cloneSquareBoard(board);
+          clone[p.x][p.y].type = PieceType.goat;
+          if (_areAllTigersBlockedOn(clone)) {
+            debugPrint("[hard AI] Placement traps tigers; placing at ${p.x}, ${p.y}");
+            _placeGoat(p);
+            return;
+          }
+        }
+      } else if (boardConfig != null) {
+        for (final p in emptyPoints) {
+          final cfgClone = _cloneAaduPuliConfig(boardConfig!);
+          final cPoint = cfgClone.nodes.firstWhere((n) => n.id == p.id);
+          cPoint.type = PieceType.goat;
+          if (_areAllTigersBlockedOnConfig(cfgClone)) {
+            debugPrint("[hard AI] Placement traps tigers (Aadu Puli); placing at ${p.x}, ${p.y}");
+            _placeGoat(p);
+            return;
+          }
+        }
+      }
+    }
+
+    // Choose best placement by board type
     Point? bestPlacement;
     double bestScore = double.negativeInfinity;
 
-    for (var point in emptyPoints) {
-      if (unsafeMoveHistory.contains('${point.x},${point.y}')) continue;
+    if (boardType == BoardType.square) {
+      for (var point in emptyPoints) {
+        if (unsafeMoveHistory.contains('${point.x},${point.y}')) continue;
+        final isSafe = _isGoatPositionSafe(point);
+        if (difficulty == Difficulty.hard && !isSafe) continue;
 
-      bool isSafe = _isGoatPositionSafe(point);
+        point.type = PieceType.goat; // simulate
+        double score = 0;
+        score += _calculateOuterWallScore(point) * 600;
+        score += _calculateBlockScore(point) * 300;
+        score += _clusterBonus(board, point) * 150;
+        score += _reducesTigerMobility(point) ? 200.0 : 0.0;
+        score -= _tigerCanCaptureAfter(board, point) ? 500.0 : 0.0;
 
-      // Skip unsafe positions in hard mode unless strategically beneficial
-      if (difficulty == Difficulty.hard && !isSafe) {
-        if (!unsafeMoveHistory.contains('${point.x},${point.y}')) {
-          debugPrint("[hard AI] Skipping unsafe position at ${point.x}, ${point.y}");
-          unsafeMoveHistory.add('${point.x},${point.y}');
+        // Simulate tiger response (pessimistic)
+        double worstTigerScore = double.infinity;
+        for (var tiger in board.expand((row) => row).where((p) => p.type == PieceType.tiger)) {
+          var tigerMoves = square.SquareBoardLogic.getValidMoves(tiger, board);
+          for (var move in tigerMoves) {
+            var boardClone = _cloneSquareBoard(board);
+            var from = boardClone[tiger.x][tiger.y];
+            var to = boardClone[move.x][move.y];
+            from.type = PieceType.empty;
+            to.type = PieceType.tiger;
+            double tigerScore = _evaluateBoardStateForGoats(boardClone);
+            worstTigerScore = tigerScore < worstTigerScore ? tigerScore : worstTigerScore;
+          }
         }
-        continue;
+        score -= worstTigerScore * 0.5;
+        if (score > bestScore) {
+          bestScore = score;
+          bestPlacement = point;
+        }
+        point.type = PieceType.empty; // undo
       }
+    } else if (boardConfig != null) {
+      for (var point in emptyPoints) {
+        final isSafe = _isGoatPositionSafeForAaduPuli(point);
+        if (difficulty == Difficulty.hard && !isSafe) continue;
 
-      point.type = PieceType.goat; // Simulate placement
+        // simulate
+        final cfgClone = _cloneAaduPuliConfig(boardConfig!);
+        final clonePoint = cfgClone.nodes.firstWhere((n) => n.id == point.id);
+        clonePoint.type = PieceType.goat;
 
-      double score = 0;
-      score += _calculateOuterWallScore(point) * 600; // +600 for covering outer walls
-      score += _calculateBlockScore(point) * 300; // +300 for blocking tiger's exit
-      score += _clusterBonus(board, point) * 150; // +150 for contributing to a wall
-      score += _reducesTigerMobility(point) ? 200.0 : 0.0; // +200 for reducing tiger mobility
-      score -= _tigerCanCaptureAfter(board, point) ? 500.0 : 0.0; // -500 for risking capture
+        double score = 0;
+        score += _clusterBonusConfig(cfgClone, clonePoint) * 150;
+        score += _reducesTigerMobilityConfig(cfgClone, clonePoint) ? 200.0 : 0.0;
+        score += _calculateBlockScoreConfig(cfgClone, clonePoint) * 300;
 
-      // Simulate tiger's best response
-      double worstTigerScore = double.infinity;
-      for (var tiger in board.expand((row) => row).where((p) => p.type == PieceType.tiger)) {
-        var tigerMoves = square.SquareBoardLogic.getValidMoves(tiger, board);
-        for (var move in tigerMoves) {
-          var boardClone = _cloneSquareBoard(board);
-          var from = boardClone[tiger.x][tiger.y];
-          var to = boardClone[move.x][move.y];
-          from.type = PieceType.empty;
-          to.type = PieceType.tiger;
-
-          double tigerScore = _evaluateBoardStateForGoats(boardClone);
-          worstTigerScore = tigerScore < worstTigerScore ? tigerScore : worstTigerScore;
+        if (score > bestScore) {
+          bestScore = score;
+          bestPlacement = point;
         }
       }
-
-      score -= worstTigerScore * 0.5; // Penalize based on tiger's best response
-
-      if (score > bestScore) {
-        bestScore = score;
-        bestPlacement = point;
-      }
-
-      point.type = PieceType.empty; // Undo simulation
     }
 
     if (bestPlacement != null) {
       debugPrint("[hard AI] Placing goat at ${bestPlacement.x}, ${bestPlacement.y} with score $bestScore");
       _placeGoat(bestPlacement);
-    } else {
-      // Select the safest fallback position
-      Point safestPosition = emptyPoints.reduce((a, b) {
-        double riskA = _evaluateRisk(a);
-        double riskB = _evaluateRisk(b);
-        return riskA < riskB ? a : b;
-      });
-      debugPrint("[hard AI] No valid positions found, placing goat at safest position ${safestPosition.x}, ${safestPosition.y}");
-      _placeGoat(safestPosition);
+      return;
     }
+
+    // Fallback: safest available
+    Point safestPosition = emptyPoints.reduce((a, b) {
+      double riskA = _evaluateRisk(a);
+      double riskB = _evaluateRisk(b);
+      return riskA < riskB ? a : b;
+    });
+    debugPrint("[hard AI] No valid positions found, placing goat at safest position ${safestPosition.x}, ${safestPosition.y}");
+    _placeGoat(safestPosition);
   }
 
   double _calculateOuterWallScore(Point point) {
@@ -336,14 +402,22 @@ class GameController extends ChangeNotifier {
   }
 
   void _goatMovementAI() {
+    // Build all legal goat moves for current board type
     List<Map<String, Point>> allMoves = [];
-    for (var row in board) {
-      for (var goat in row.where((p) => p.type == PieceType.goat)) {
-        var validMoves = square.SquareBoardLogic.getValidMoves(goat, board);
-        for (var to in validMoves) {
-          if (to.type == PieceType.empty) {
-            allMoves.add({'from': goat, 'to': to});
+    if (boardType == BoardType.square) {
+      for (var row in board) {
+        for (var goat in row.where((p) => p.type == PieceType.goat)) {
+          var validMoves = square.SquareBoardLogic.getValidMoves(goat, board);
+          for (var to in validMoves) {
+            if (to.type == PieceType.empty) allMoves.add({'from': goat, 'to': to});
           }
+        }
+      }
+    } else if (boardConfig != null) {
+      for (var goat in boardConfig!.nodes.where((n) => n.type == PieceType.goat)) {
+        var valids = aadu.AaduPuliLogic.getValidMoves(goat, boardConfig!);
+        for (var to in valids) {
+          if (to.type == PieceType.empty) allMoves.add({'from': goat, 'to': to});
         }
       }
     }
@@ -353,24 +427,154 @@ class GameController extends ChangeNotifier {
       return;
     }
 
+    // Hard mode priority: block imminent tiger jumps either by evacuating the victim or blocking landing
+    if (difficulty == Difficulty.hard) {
+      final threats = _getCurrentJumpThreats();
+      Map<String, Point>? bestBlockMove;
+      double bestBlockScore = double.negativeInfinity;
+
+      for (final t in threats) {
+        // Option A: move the victim goat to a safe adjacent spot
+        final victimMoves = _getValidMoves(t.victim);
+        for (final to in victimMoves) {
+          if (to.type != PieceType.empty) continue;
+          bool safe;
+          if (boardType == BoardType.square) {
+            final boardClone = _cloneSquareBoard(board);
+            final fromC = boardClone[t.victim.x][t.victim.y];
+            final toC = boardClone[to.x][to.y];
+            fromC.type = PieceType.empty;
+            toC.type = PieceType.goat;
+            safe = !_tigerCanCaptureAfter(boardClone, toC);
+            if (safe) {
+              double score = 10000 + _clusterBonus(boardClone, toC) * 10 + (_reducesTigerMobility(toC) ? 5 : 0);
+              if (score > bestBlockScore) {
+                bestBlockScore = score;
+                bestBlockMove = {'from': t.victim, 'to': to};
+              }
+            }
+          } else if (boardConfig != null) {
+            final cfgClone = _cloneAaduPuliConfig(boardConfig!);
+            final fromC = cfgClone.nodes.firstWhere((n) => n.id == t.victim.id);
+            final toC = cfgClone.nodes.firstWhere((n) => n.id == to.id);
+            fromC.type = PieceType.empty;
+            toC.type = PieceType.goat;
+            safe = !_tigerCanCaptureAfterConfig(cfgClone, toC);
+            if (safe) {
+              double score = 10000 + _clusterBonusConfig(cfgClone, toC) * 10 + (_reducesTigerMobilityConfig(cfgClone, toC) ? 5 : 0);
+              if (score > bestBlockScore) {
+                bestBlockScore = score;
+                bestBlockMove = {'from': t.victim, 'to': to};
+              }
+            }
+          }
+        }
+
+        // Option B: move another goat to occupy the landing square
+        for (final move in allMoves) {
+          if (move['to'] == t.landing) {
+            bool safe;
+            if (boardType == BoardType.square) {
+              final boardClone = _cloneSquareBoard(board);
+              final fromC = boardClone[move['from']!.x][move['from']!.y];
+              final toC = boardClone[move['to']!.x][move['to']!.y];
+              fromC.type = PieceType.empty;
+              toC.type = PieceType.goat;
+              safe = !_tigerCanCaptureAfter(boardClone, toC);
+              if (safe) {
+                double score = 9000 + _clusterBonus(boardClone, toC) * 10 + (_reducesTigerMobility(toC) ? 5 : 0);
+                if (score > bestBlockScore) {
+                  bestBlockScore = score;
+                  bestBlockMove = move;
+                }
+              }
+            } else if (boardConfig != null) {
+              final cfgClone = _cloneAaduPuliConfig(boardConfig!);
+              final fromC = cfgClone.nodes.firstWhere((n) => n.id == move['from']!.id);
+              final toC = cfgClone.nodes.firstWhere((n) => n.id == move['to']!.id);
+              fromC.type = PieceType.empty;
+              toC.type = PieceType.goat;
+              safe = !_tigerCanCaptureAfterConfig(cfgClone, toC);
+              if (safe) {
+                double score = 9000 + _clusterBonusConfig(cfgClone, toC) * 10 + (_reducesTigerMobilityConfig(cfgClone, toC) ? 5 : 0);
+                if (score > bestBlockScore) {
+                  bestBlockScore = score;
+                  bestBlockMove = move;
+                }
+              }
+            }
+          }
+        }
+      }
+
+      if (bestBlockMove != null) {
+        debugPrint("[hard AI] Blocking tiger jump by moving from ${bestBlockMove['from']!.x},${bestBlockMove['from']!.y} to ${bestBlockMove['to']!.x},${bestBlockMove['to']!.y}");
+        _executeMove(bestBlockMove['from']!, bestBlockMove['to']!);
+        currentTurn = PieceType.tiger;
+        return;
+      }
+    }
+
+    // Otherwise, use heuristic move selection with safety filtering in hard mode
     Map<String, Point>? bestMove;
     double bestScore = double.negativeInfinity;
 
-    for (final move in allMoves) {
-      var boardClone = _cloneSquareBoard(board);
-      var from = boardClone[move['from']!.x][move['from']!.y];
-      var to = boardClone[move['to']!.x][move['to']!.y];
-      from.type = PieceType.empty;
-      to.type = PieceType.goat;
+    if (boardType == BoardType.square) {
+      for (final move in allMoves) {
+        final boardClone = _cloneSquareBoard(board);
+        final from = boardClone[move['from']!.x][move['from']!.y];
+        final to = boardClone[move['to']!.x][move['to']!.y];
+        from.type = PieceType.empty;
+        to.type = PieceType.goat;
 
-      double score = 0;
-      score += _reducesTigerMobility(to) ? 300.0 : 0.0; // +300 for reducing tiger mobility
-      score += _clusterBonus(boardClone, to) * 150; // +150 for supporting other goats
-      score -= _tigerCanCaptureAfter(boardClone, to) ? 500.0 : 0.0; // -500 for risking capture
+        // If this move blocks all tigers, do it immediately
+        if (_areAllTigersBlockedOn(boardClone)) {
+          debugPrint("[hard AI] Move traps tigers; executing immediately.");
+          _executeMove(move['from']!, move['to']!);
+          currentTurn = PieceType.tiger;
+          return;
+        }
 
-      if (score > bestScore) {
-        bestScore = score;
-        bestMove = move;
+        if (difficulty == Difficulty.hard && _tigerCanCaptureAfter(boardClone, to)) continue;
+
+        double score = 0;
+        score += _reducesTigerMobility(to) ? 300.0 : 0.0;
+        score += _clusterBonus(boardClone, to) * 150;
+        score -= _tigerCanCaptureAfter(boardClone, to) ? 500.0 : 0.0;
+
+        if (score > bestScore) {
+          bestScore = score;
+          bestMove = move;
+        }
+      }
+    } else if (boardConfig != null) {
+      for (final move in allMoves) {
+        final cfgClone = _cloneAaduPuliConfig(boardConfig!);
+        final fromC = cfgClone.nodes.firstWhere((n) => n.id == move['from']!.id);
+        final toC = cfgClone.nodes.firstWhere((n) => n.id == move['to']!.id);
+        fromC.type = PieceType.empty;
+        toC.type = PieceType.goat;
+
+        if (_areAllTigersBlockedOnConfig(cfgClone)) {
+          debugPrint("[hard AI] Move traps tigers (Aadu Puli); executing immediately.");
+          _executeMove(move['from']!, move['to']!);
+          currentTurn = PieceType.tiger;
+          return;
+        }
+
+        if (difficulty == Difficulty.hard && _tigerCanCaptureAfterConfig(cfgClone, toC)) {
+          continue;
+        }
+
+        double score = 0;
+        score += _reducesTigerMobilityConfig(cfgClone, toC) ? 300.0 : 0.0;
+        score += _clusterBonusConfig(cfgClone, toC) * 150;
+        score -= _tigerCanCaptureAfterConfig(cfgClone, toC) ? 500.0 : 0.0;
+
+        if (score > bestScore) {
+          bestScore = score;
+          bestMove = move;
+        }
       }
     }
 
@@ -397,7 +601,6 @@ class GameController extends ChangeNotifier {
             if (board[jumpX][jumpY].type == PieceType.empty) {
               // Check if blocking the landing point is strategically beneficial
               if (!_isStrategicBlock(position, Point(x: jumpX, y: jumpY))) {
-                debugPrint("Position ${position.x}, ${position.y} is unsafe due to tiger at ${tiger.x}, ${tiger.y}");
                 return false;
               }
             }
@@ -495,11 +698,7 @@ class GameController extends ChangeNotifier {
       return;
     }
 
-    if (!_isGoatPositionSafe(point)) {
-      debugPrint(
-        "Warning: Placing goat in unsafe position at ${point.x},${point.y}",
-      );
-    }
+    // In hard mode, we already filtered unsafe placements or decided strategically; avoid noisy logs
 
     point.type = PieceType.goat;
     placedGoats++;
@@ -1065,6 +1264,13 @@ class GameController extends ChangeNotifier {
     return true;
   }
 
+  bool _areAllTigersBlockedOn(List<List<Point>> boardState) {
+    for (var tiger in boardState.expand((row) => row).where((p) => p.type == PieceType.tiger)) {
+      if (square.SquareBoardLogic.getValidMoves(tiger, boardState).isNotEmpty) return false;
+    }
+    return true;
+  }
+
   double _evaluateBoardStateForGoats(List<List<Point>> boardState) {
     int tigerMoves = boardState.expand((row) => row)
         .where((p) => p.type == PieceType.tiger)
@@ -1291,4 +1497,96 @@ class GameController extends ChangeNotifier {
     return risk;
   }
 
+  // ===== Hard mode helper utilities =====
+  List<_JumpThreat> _getCurrentJumpThreats() {
+    final threats = <_JumpThreat>[];
+    if (boardType == BoardType.square) {
+      for (var tiger in board.expand((row) => row).where((p) => p.type == PieceType.tiger)) {
+        for (final adj in tiger.adjacentPoints) {
+          if (adj.type != PieceType.goat) continue;
+          final dx = adj.x - tiger.x;
+          final dy = adj.y - tiger.y;
+          final lx = adj.x + dx;
+          final ly = adj.y + dy;
+          if (lx >= 0 && lx < 5 && ly >= 0 && ly < 5) {
+            final landing = board[lx][ly];
+            if (landing.type == PieceType.empty && adj.adjacentPoints.contains(landing)) {
+              threats.add(_JumpThreat(tiger: tiger, victim: adj, landing: landing));
+            }
+          }
+        }
+      }
+    } else if (boardConfig != null) {
+      for (final tiger in boardConfig!.nodes.where((n) => n.type == PieceType.tiger)) {
+        for (final goat in tiger.adjacentPoints.where((p) => p.type == PieceType.goat)) {
+          for (final landing in goat.adjacentPoints) {
+            if (landing == tiger || landing.type != PieceType.empty) continue;
+            final key = '${tiger.id},${goat.id},${landing.id}';
+            if (aadu.AaduPuliLogic.isJumpTriple(key)) {
+              threats.add(_JumpThreat(tiger: tiger, victim: goat, landing: landing));
+            }
+          }
+        }
+      }
+    }
+    return threats;
+  }
+
+  bool _isEdgeSquare(Point p) {
+    return p.x == 0 || p.x == 4 || p.y == 0 || p.y == 4;
+  }
+
+  double _clusterBonusConfig(BoardConfig cfg, Point goatPosition) {
+    return goatPosition.adjacentPoints.where((adj) => adj.type == PieceType.goat).length.toDouble();
+  }
+
+  int _calculateTigerMobilityConfig(BoardConfig cfg) {
+    int mobility = 0;
+    for (final tiger in cfg.nodes.where((n) => n.type == PieceType.tiger)) {
+      mobility += aadu.AaduPuliLogic.getValidMoves(tiger, cfg).length;
+    }
+    return mobility;
+  }
+
+  bool _reducesTigerMobilityConfig(BoardConfig cfg, Point goatPosition) {
+    final initial = boardConfig != null ? _calculateTigerMobilityConfig(boardConfig!) : _calculateTigerMobilityConfig(cfg);
+    final reduced = _calculateTigerMobilityConfig(cfg);
+    return reduced < initial;
+  }
+
+  double _calculateBlockScoreConfig(BoardConfig cfg, Point goatPosition) {
+    double score = 0.0;
+    for (final tiger in cfg.nodes.where((n) => n.type == PieceType.tiger)) {
+      for (final goat in tiger.adjacentPoints.where((p) => p.type == PieceType.goat)) {
+        for (final landing in goat.adjacentPoints) {
+          if (landing == tiger || landing.type != PieceType.empty) continue;
+          final key = '${tiger.id},${goat.id},${landing.id}';
+          if (aadu.AaduPuliLogic.isJumpTriple(key) && landing.id == goatPosition.id) {
+            score += 10.0;
+          }
+        }
+      }
+    }
+    return score;
+  }
+
+  bool _tigerCanCaptureAfterConfig(BoardConfig cfg, Point goatPosition) {
+    for (final tiger in cfg.nodes.where((n) => n.type == PieceType.tiger)) {
+      for (final landing in goatPosition.adjacentPoints) {
+        if (landing == tiger || landing.type != PieceType.empty) continue;
+        final key = '${tiger.id},${goatPosition.id},${landing.id}';
+        if (aadu.AaduPuliLogic.isJumpTriple(key)) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  bool _areAllTigersBlockedOnConfig(BoardConfig cfg) {
+    for (final tiger in cfg.nodes.where((n) => n.type == PieceType.tiger)) {
+      if (aadu.AaduPuliLogic.getValidMoves(tiger, cfg).isNotEmpty) return false;
+    }
+    return true;
+  }
 }
