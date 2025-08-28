@@ -342,11 +342,13 @@ class GameController extends ChangeNotifier {
       // If there are no safe landing blocks, do NOT place on an unsafe landing; continue with other priorities
     }
 
-    // Hard mode priority 2: on square board, cover outer walls before center
+    // Hard mode priority 2: on square board, cover outer walls before center (early phase)
     if (difficulty == Difficulty.hard && boardType == BoardType.square) {
-      final wallEmpties = emptyPoints.where(_isEdgeSquare).toList();
-      if (wallEmpties.isNotEmpty) {
-        emptyPoints = wallEmpties;
+      if (placedGoats < 12) {
+        final wallEmpties = emptyPoints.where(_isEdgeSquare).toList();
+        if (wallEmpties.isNotEmpty) {
+          emptyPoints = wallEmpties;
+        }
       }
     }
 
@@ -395,14 +397,15 @@ class GameController extends ChangeNotifier {
         }
 
         double score = 0;
-        score += _calculateOuterWallScore(point) * 600;
+        // Emphasize edges early
+        score += _calculateOuterWallScore(point) * (placedGoats < 12 ? 800 : 300);
         score += _calculateBlockScoreForBoard(boardClone, simulated) * 300;
-        score += _clusterBonus(boardClone, simulated) * 150;
+        score += _clusterBonus(boardClone, simulated) * 200;
 
         // Mobility reduction compared to current board
         final int initialMobility = _calculateTigerMobility(board);
         final int reducedMobility = _calculateTigerMobility(boardClone);
-        score += (reducedMobility < initialMobility) ? 200.0 : 0.0;
+        score += (reducedMobility < initialMobility) ? 250.0 : 0.0;
 
         // Pessimistic tiger response from this simulated state
         double worstTigerScore = double.infinity;
@@ -418,7 +421,7 @@ class GameController extends ChangeNotifier {
             worstTigerScore = tigerScore < worstTigerScore ? tigerScore : worstTigerScore;
           }
         }
-        score -= worstTigerScore * 0.5;
+        score -= worstTigerScore * 0.25;
 
         if (score > bestScore) {
           bestScore = score;
@@ -603,7 +606,7 @@ class GameController extends ChangeNotifier {
       }
     }
 
-    // Otherwise, use heuristic move selection with safety filtering in hard mode
+    // Otherwise, use defensive minimax (goat -> tiger replies) in hard mode
     Map<String, Point>? bestMove;
     double bestScore = double.negativeInfinity;
 
@@ -615,7 +618,7 @@ class GameController extends ChangeNotifier {
         from.type = PieceType.empty;
         to.type = PieceType.goat;
 
-        // If this move blocks all tigers, do it immediately
+        // Immediate win check
         if (_areAllTigersBlockedOn(boardClone)) {
           debugPrint("[hard AI] Move traps tigers; executing immediately.");
           _executeMove(move['from']!, move['to']!);
@@ -623,16 +626,63 @@ class GameController extends ChangeNotifier {
           return;
         }
 
-        if (difficulty == Difficulty.hard && _tigerCanCaptureAfter(boardClone, to)) continue;
+        if (difficulty == Difficulty.hard && _tigerCanCaptureAfter(boardClone, to)) {
+          continue;
+        }
 
-        double score = 0;
-        score += _reducesTigerMobility(to) ? 300.0 : 0.0;
-        score += _clusterBonus(boardClone, to) * 150;
-        score -= _tigerCanCaptureAfter(boardClone, to) ? 500.0 : 0.0;
+        // Generate all tiger replies
+        final tigerPieces = boardClone.expand((r) => r).where((p) => p.type == PieceType.tiger);
+        final tigerReplies = <Map<String, Point>>[];
+        for (final tiger in tigerPieces) {
+          final valids = square.SquareBoardLogic.getValidMoves(tiger, boardClone);
+          for (final dest in valids) {
+            tigerReplies.add({'from': tiger, 'to': dest});
+          }
+        }
 
-        if (score > bestScore) {
-          bestScore = score;
+        double worst = double.infinity;
+        if (tigerReplies.isEmpty) {
+          worst = _evaluateBoardStateForGoats(boardClone) + 10000.0; // LARGE_BONUS
+        } else {
+          for (final treply in tigerReplies) {
+            final tb = _cloneSquareBoard(boardClone);
+            final tf = tb[treply['from']!.x][treply['from']!.y];
+            final tt = tb[treply['to']!.x][treply['to']!.y];
+            tf.type = PieceType.empty;
+            tt.type = PieceType.tiger;
+            final val = _evaluateBoardStateForGoats(tb);
+            if (val < worst) worst = val;
+          }
+        }
+
+        // Tie-breakers when scores equal within epsilon
+        if (worst > bestScore + 1e-6) {
+          bestScore = worst;
           bestMove = move;
+        } else if ((worst - bestScore).abs() <= 1e-6 && bestMove != null) {
+          // Prefer more blocked tigers, lower tiger mobility, higher connectivity
+          final currBlocked = _countBlockedTigersOn(boardClone);
+          final prevBoard = _cloneSquareBoard(board);
+          final prevFrom = prevBoard[bestMove!['from']!.x][bestMove!['from']!.y];
+          final prevTo = prevBoard[bestMove!['to']!.x][bestMove!['to']!.y];
+          prevFrom.type = PieceType.empty;
+          prevTo.type = PieceType.goat;
+          final prevBlocked = _countBlockedTigersOn(prevBoard);
+          if (currBlocked > prevBlocked) {
+            bestMove = move;
+          } else if (currBlocked == prevBlocked) {
+            final currMob = _calculateTigerMobility(boardClone);
+            final prevMob = _calculateTigerMobility(prevBoard);
+            if (currMob < prevMob) {
+              bestMove = move;
+            } else if (currMob == prevMob) {
+              final currConn = _goatConnectivityOn(boardClone);
+              final prevConn = _goatConnectivityOn(prevBoard);
+              if (currConn > prevConn) {
+                bestMove = move;
+              }
+            }
+          }
         }
       }
     } else if (boardConfig != null) {
@@ -654,6 +704,7 @@ class GameController extends ChangeNotifier {
           continue;
         }
 
+        // Basic heuristic for Aadu Puli board retained
         double score = 0;
         score += _reducesTigerMobilityConfig(cfgClone, toC) ? 300.0 : 0.0;
         score += _clusterBonusConfig(cfgClone, toC) * 150;
@@ -1390,25 +1441,33 @@ class GameController extends ChangeNotifier {
   }
 
   double _evaluateBoardStateForGoats(List<List<Point>> boardState) {
-    int tigerMoves = boardState.expand((row) => row)
-        .where((p) => p.type == PieceType.tiger)
-        .fold(0, (sum, tiger) => sum + square.SquareBoardLogic.getValidMoves(tiger, boardState).length);
+    // Terms per spec (square board):
+    // blockedTigers, tigerMobility, unsafeGoats, goatConnectivity, goatsNearEdges, goatsCaptured
+    final int blockedTigers = _countBlockedTigersOn(boardState);
+    final int tigerMobility = _calculateTigerMobility(boardState);
+    final int unsafeGoats = _countUnsafeGoatsOn(boardState);
+    final int goatsNearEdges = _countGoatsNearEdgesOn(boardState);
+    final int goatsCapturedNow = capturedGoats; // controller state
 
-    int goatMoves = boardState.expand((row) => row)
-        .where((p) => p.type == PieceType.goat)
-        .fold(0, (sum, goat) => sum + square.SquareBoardLogic.getValidMoves(goat, boardState).length);
+    // Connectivity: count adjacent goat pairs (each pair counted once)
+    final int goatConnectivity = _goatConnectivityOn(boardState);
 
-    int wallGoats = boardState[2].where((p) => p.type == PieceType.goat).length;
+    // Dynamic weights: early placement favors edges more; later favor connectivity
+    final bool inPlacementPhase = !isGoatMovementPhase;
+    final bool earlyPlacement = inPlacementPhase && placedGoats < 12;
+    final double edgesWeight = earlyPlacement ? 20.0 : 6.0;
+    final double connectivityWeight = inPlacementPhase && !earlyPlacement ? 10.0 : 8.0;
 
-    int unsafeGoats = boardState.expand((row) => row)
-        .where((p) => p.type == PieceType.goat && !_isGoatPositionSafeOn(boardState, p, log: false))
-        .length;
+    // Weighted score (higher is better for goats)
+    final double score =
+        500.0 * blockedTigers +
+        (-12.0) * tigerMobility +
+        (-200.0) * unsafeGoats +
+        connectivityWeight * goatConnectivity +
+        edgesWeight * goatsNearEdges +
+        (-80.0) * goatsCapturedNow;
 
-    double tigerMobilityScore = (20 - tigerMoves) * 10.0; 
-    double wallScore = wallGoats * 20.0; 
-    double unsafePenalty = unsafeGoats * -50.0; 
-
-    return tigerMobilityScore + wallScore + goatMoves * 1.0 + unsafePenalty;
+    return score;
   }
 
   Map<String, Point> _chooseHardMove(List<Map<String, Point>> allMoves) {
@@ -1613,6 +1672,49 @@ class GameController extends ChangeNotifier {
     int reducedMobility = _calculateTigerMobility(boardClone);
 
     return reducedMobility < initialMobility;
+  }
+
+  // ===== Square board evaluation helpers per hard-mode spec =====
+  int _countBlockedTigersOn(List<List<Point>> boardState) {
+    int blocked = 0;
+    for (final tiger in boardState.expand((row) => row).where((p) => p.type == PieceType.tiger)) {
+      if (square.SquareBoardLogic.getValidMoves(tiger, boardState).isEmpty) blocked++;
+    }
+    return blocked;
+  }
+
+  int _countUnsafeGoatsOn(List<List<Point>> boardState) {
+    int count = 0;
+    for (final goat in boardState.expand((row) => row).where((p) => p.type == PieceType.goat)) {
+      if (!_isGoatPositionSafeOn(boardState, goat, log: false)) count++;
+    }
+    return count;
+  }
+
+  int _countGoatsNearEdgesOn(List<List<Point>> boardState) {
+    int count = 0;
+    final int maxX = boardState.length - 1;
+    final int maxY = boardState[0].length - 1;
+    for (final p in boardState.expand((row) => row)) {
+      if (p.type != PieceType.goat) continue;
+      if (p.x == 0 || p.x == maxX || p.y == 0 || p.y == maxY) count++;
+    }
+    return count;
+  }
+
+  int _goatConnectivityOn(List<List<Point>> boardState) {
+    int connections = 0;
+    final seen = <String>{};
+    for (final goat in boardState.expand((row) => row).where((p) => p.type == PieceType.goat)) {
+      for (final adj in goat.adjacentPoints) {
+        if (adj.type != PieceType.goat) continue;
+        final a = '${goat.x},${goat.y}';
+        final b = '${adj.x},${adj.y}';
+        final key = a.compareTo(b) < 0 ? '$a|$b' : '$b|$a';
+        if (seen.add(key)) connections++;
+      }
+    }
+    return connections;
   }
 
   double _evaluateRisk(Point point) {
