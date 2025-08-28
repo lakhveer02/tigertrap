@@ -355,12 +355,17 @@ class GameController extends ChangeNotifier {
         if (boardType == BoardType.square) {
           final int threatsBefore = _countJumpThreatsOn(board);
           for (final landing in allLandingBlocks) {
+            // Avoid repeating previously unsafe fallback placements
+            if (unsafeMoveHistory.contains('${landing.x},${landing.y}')) {
+              continue;
+            }
             final bClone = _cloneSquareBoard(board);
             final landC = bClone[landing.x][landing.y];
             landC.type = PieceType.goat;
             final int threatsAfter = _countJumpThreatsOn(bClone);
             double score = (threatsBefore - threatsAfter) * 1000.0;
-            score += _calculateOuterWallScore(landing) * 200;
+            // Strongly prefer edges/corners on unsafe fallback to avoid inner traps
+            score += _calculateOuterWallScore(landing) * 800;
             score += _clusterBonus(bClone, landC) * 50;
             if (score > bestScore) {
               bestScore = score;
@@ -370,6 +375,10 @@ class GameController extends ChangeNotifier {
         } else if (boardConfig != null) {
           final int threatsBefore = _countJumpThreatsOnConfig(boardConfig!);
           for (final landing in allLandingBlocks) {
+            // Avoid repeating previously unsafe fallback placements
+            if (unsafeMoveHistory.contains('${landing.x},${landing.y}')) {
+              continue;
+            }
             final cfg = _cloneAaduPuliConfig(boardConfig!);
             final landC = cfg.nodes.firstWhere((n) => n.id == landing.id);
             landC.type = PieceType.goat;
@@ -384,6 +393,8 @@ class GameController extends ChangeNotifier {
         }
         if (bestBlock != null) {
           debugPrint("[hard AI] Blocking tiger jump by placing (unsafe fallback) at ${bestBlock.x}, ${bestBlock.y}");
+          // Record this unsafe fallback position so we do not repeat it
+          unsafeMoveHistory.add('${bestBlock.x},${bestBlock.y}');
           _placeGoat(bestBlock);
           return;
         }
