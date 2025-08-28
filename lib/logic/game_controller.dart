@@ -279,9 +279,11 @@ class GameController extends ChangeNotifier {
       final threats = _getCurrentJumpThreats();
       // Collect SAFE landing blocks, then choose the best-scoring one
       final List<Point> safeLandingBlocks = [];
+      final List<Point> allLandingBlocks = [];
       for (final t in threats) {
         final landing = t.landing;
         if (landing.type != PieceType.empty) continue;
+        allLandingBlocks.add(landing);
         if (boardType == BoardType.square) {
           final bClone = _cloneSquareBoard(board);
           final landC = bClone[landing.x][landing.y];
@@ -313,6 +315,10 @@ class GameController extends ChangeNotifier {
             final int initialMobility = _calculateTigerMobility(board);
             final int reducedMobility = _calculateTigerMobility(bClone);
             score += (reducedMobility < initialMobility) ? 200.0 : 0.0;
+            // Prefer placements that reduce total jump threats
+            final int threatsBefore = _countJumpThreatsOn(board);
+            final int threatsAfter = _countJumpThreatsOn(bClone);
+            score += (threatsBefore - threatsAfter) * 500.0;
             if (score > bestBlockScore) {
               bestBlockScore = score;
               bestSafeBlock = landing;
@@ -327,6 +333,10 @@ class GameController extends ChangeNotifier {
             score += _clusterBonusConfig(cfg, landC) * 150;
             score += _reducesTigerMobilityConfig(cfg, landC) ? 200.0 : 0.0;
             score += _calculateBlockScoreConfig(cfg, landC) * 300;
+            // Prefer placements that reduce total jump threats
+            final int threatsBefore = _countJumpThreatsOnConfig(boardConfig!);
+            final int threatsAfter = _countJumpThreatsOnConfig(cfg);
+            score += (threatsBefore - threatsAfter) * 500.0;
             if (score > bestBlockScore) {
               bestBlockScore = score;
               bestSafeBlock = landing;
@@ -338,8 +348,47 @@ class GameController extends ChangeNotifier {
           _placeGoat(bestSafeBlock);
           return;
         }
+      } else if (allLandingBlocks.isNotEmpty) {
+        // Fallback: pick the landing block that most reduces imminent jump threats even if unsafe
+        Point? bestBlock;
+        double bestScore = double.negativeInfinity;
+        if (boardType == BoardType.square) {
+          final int threatsBefore = _countJumpThreatsOn(board);
+          for (final landing in allLandingBlocks) {
+            final bClone = _cloneSquareBoard(board);
+            final landC = bClone[landing.x][landing.y];
+            landC.type = PieceType.goat;
+            final int threatsAfter = _countJumpThreatsOn(bClone);
+            double score = (threatsBefore - threatsAfter) * 1000.0;
+            score += _calculateOuterWallScore(landing) * 200;
+            score += _clusterBonus(bClone, landC) * 50;
+            if (score > bestScore) {
+              bestScore = score;
+              bestBlock = landing;
+            }
+          }
+        } else if (boardConfig != null) {
+          final int threatsBefore = _countJumpThreatsOnConfig(boardConfig!);
+          for (final landing in allLandingBlocks) {
+            final cfg = _cloneAaduPuliConfig(boardConfig!);
+            final landC = cfg.nodes.firstWhere((n) => n.id == landing.id);
+            landC.type = PieceType.goat;
+            final int threatsAfter = _countJumpThreatsOnConfig(cfg);
+            double score = (threatsBefore - threatsAfter) * 1000.0;
+            score += _clusterBonusConfig(cfg, landC) * 50;
+            if (score > bestScore) {
+              bestScore = score;
+              bestBlock = landing;
+            }
+          }
+        }
+        if (bestBlock != null) {
+          debugPrint("[hard AI] Blocking tiger jump by placing (unsafe fallback) at ${bestBlock.x}, ${bestBlock.y}");
+          _placeGoat(bestBlock);
+          return;
+        }
       }
-      // If there are no safe landing blocks, do NOT place on an unsafe landing; continue with other priorities
+      // If there are no landing blocks, continue with other priorities
     }
 
     // Hard mode priority 2: on square board, cover outer walls before center (early phase)
@@ -601,6 +650,56 @@ class GameController extends ChangeNotifier {
       if (bestBlockMove != null) {
         debugPrint("[hard AI] Blocking tiger jump by moving from ${bestBlockMove['from']!.x},${bestBlockMove['from']!.y} to ${bestBlockMove['to']!.x},${bestBlockMove['to']!.y}");
         _executeMove(bestBlockMove['from']!, bestBlockMove['to']!);
+        currentTurn = PieceType.tiger;
+        return;
+      }
+
+      // Fallback: if no safe block move found, choose a block that reduces threats most, even if unsafe
+      Map<String, Point>? bestUnsafeBlockMove;
+      double bestUnsafeScore = double.negativeInfinity;
+      if (threats.isNotEmpty) {
+        if (boardType == BoardType.square) {
+          final int threatsBefore = _countJumpThreatsOn(board);
+          for (final move in allMoves) {
+            // Consider moves that occupy any current landing
+            if (!threats.any((t) => t.landing == move['to'])) continue;
+            final boardClone = _cloneSquareBoard(board);
+            final fromC = boardClone[move['from']!.x][move['from']!.y];
+            final toC = boardClone[move['to']!.x][move['to']!.y];
+            fromC.type = PieceType.empty;
+            toC.type = PieceType.goat;
+            final int threatsAfter = _countJumpThreatsOn(boardClone);
+            double score = (threatsBefore - threatsAfter) * 1000.0;
+            score += _clusterBonus(boardClone, toC) * 20;
+            score += _reducesTigerMobility(toC) ? 10 : 0;
+            if (score > bestUnsafeScore) {
+              bestUnsafeScore = score;
+              bestUnsafeBlockMove = move;
+            }
+          }
+        } else if (boardConfig != null) {
+          final int threatsBefore = _countJumpThreatsOnConfig(boardConfig!);
+          for (final move in allMoves) {
+            if (!threats.any((t) => t.landing.id == move['to']!.id)) continue;
+            final cfgClone = _cloneAaduPuliConfig(boardConfig!);
+            final fromC = cfgClone.nodes.firstWhere((n) => n.id == move['from']!.id);
+            final toC = cfgClone.nodes.firstWhere((n) => n.id == move['to']!.id);
+            fromC.type = PieceType.empty;
+            toC.type = PieceType.goat;
+            final int threatsAfter = _countJumpThreatsOnConfig(cfgClone);
+            double score = (threatsBefore - threatsAfter) * 1000.0;
+            score += _clusterBonusConfig(cfgClone, toC) * 20;
+            score += _reducesTigerMobilityConfig(cfgClone, toC) ? 10 : 0;
+            if (score > bestUnsafeScore) {
+              bestUnsafeScore = score;
+              bestUnsafeBlockMove = move;
+            }
+          }
+        }
+      }
+      if (bestUnsafeBlockMove != null) {
+        debugPrint("[hard AI] Blocking tiger jump (unsafe fallback) by moving from ${bestUnsafeBlockMove['from']!.x},${bestUnsafeBlockMove['from']!.y} to ${bestUnsafeBlockMove['to']!.x},${bestUnsafeBlockMove['to']!.y}");
+        _executeMove(bestUnsafeBlockMove['from']!, bestUnsafeBlockMove['to']!);
         currentTurn = PieceType.tiger;
         return;
       }
@@ -1767,6 +1866,44 @@ class GameController extends ChangeNotifier {
       }
     }
     return threats;
+  }
+
+  // Count current jump threats on a given square board state
+  int _countJumpThreatsOn(List<List<Point>> boardState) {
+    int total = 0;
+    for (final tiger in boardState.expand((row) => row).where((p) => p.type == PieceType.tiger)) {
+      for (final adj in tiger.adjacentPoints) {
+        if (adj.type != PieceType.goat) continue;
+        final dx = adj.x - tiger.x;
+        final dy = adj.y - tiger.y;
+        final lx = adj.x + dx;
+        final ly = adj.y + dy;
+        if (lx >= 0 && lx < 5 && ly >= 0 && ly < 5) {
+          final landing = boardState[lx][ly];
+          if (landing.type == PieceType.empty && adj.adjacentPoints.contains(landing)) {
+            total++;
+          }
+        }
+      }
+    }
+    return total;
+  }
+
+  // Count current jump threats on a given Aadu Puli board config
+  int _countJumpThreatsOnConfig(BoardConfig cfg) {
+    int total = 0;
+    for (final tiger in cfg.nodes.where((n) => n.type == PieceType.tiger)) {
+      for (final goat in tiger.adjacentPoints.where((p) => p.type == PieceType.goat)) {
+        for (final landing in goat.adjacentPoints) {
+          if (landing == tiger || landing.type != PieceType.empty) continue;
+          final key = '${tiger.id},${goat.id},${landing.id}';
+          if (aadu.AaduPuliLogic.isJumpTriple(key)) {
+            total++;
+          }
+        }
+      }
+    }
+    return total;
   }
 
   bool _isEdgeSquare(Point p) {
