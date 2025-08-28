@@ -242,6 +242,8 @@ class GameController extends ChangeNotifier {
   }
 
   void _goatPlacementAI() {
+    // Re-evaluate unsafe positions fresh each turn
+    unsafeMoveHistory.clear();
     List<Point> emptyPoints = [];
     if (boardType == BoardType.square) {
       for (var row in board) {
@@ -366,6 +368,7 @@ class GameController extends ChangeNotifier {
       double score = 0;
       score += _reducesTigerMobility(to) ? 300.0 : 0.0; // +300 for reducing tiger mobility
       score += _clusterBonus(boardClone, to) * 150; // +150 for supporting other goats
+      score += _calculateBlockScoreForBoard(boardClone, to) * 300; // +300 for blocking tiger jumps by occupying landing cells
       score -= _tigerCanCaptureAfter(boardClone, to) ? 500.0 : 0.0; // -500 for risking capture
 
       if (score > bestScore) {
@@ -386,40 +389,52 @@ class GameController extends ChangeNotifier {
 
   bool _isGoatPositionSafe(Point position) {
     if (boardType == BoardType.square) {
-      for (final tiger in board.expand((row) => row).where((p) => p.type == PieceType.tiger)) {
-        if ((position.x - tiger.x).abs() <= 1 && (position.y - tiger.y).abs() <= 1) {
-          int dx = position.x - tiger.x;
-          int dy = position.y - tiger.y;
-          int jumpX = position.x + dx;
-          int jumpY = position.y + dy;
-
-          if (jumpX >= 0 && jumpX < 5 && jumpY >= 0 && jumpY < 5) {
-            if (board[jumpX][jumpY].type == PieceType.empty) {
-              // Check if blocking the landing point is strategically beneficial
-              if (!_isStrategicBlock(position, Point(x: jumpX, y: jumpY))) {
-                debugPrint("Position ${position.x}, ${position.y} is unsafe due to tiger at ${tiger.x}, ${tiger.y}");
-                return false;
-              }
-            }
-          }
-        }
-      }
-      return true;
+      return _isGoatPositionSafeOn(board, position, log: true);
     } else {
       return _isGoatPositionSafeForAaduPuli(position);
     }
   }
 
   bool _isStrategicBlock(Point goatPosition, Point landingPoint) {
-    // Evaluate if blocking the landing point is strategically beneficial
-    // For example, it might be beneficial if it reduces tiger mobility significantly
-    var boardClone = _cloneSquareBoard(board);
+    return _isStrategicBlockOn(board, goatPosition, landingPoint);
+  }
+
+  bool _isStrategicBlockOn(
+    List<List<Point>> boardState,
+    Point goatPosition,
+    Point landingPoint,
+  ) {
+    var boardClone = _cloneSquareBoard(boardState);
     boardClone[goatPosition.x][goatPosition.y].type = PieceType.goat;
-
-    int initialTigerMobility = _calculateTigerMobility(board);
+    int initialTigerMobility = _calculateTigerMobility(boardState);
     int reducedTigerMobility = _calculateTigerMobility(boardClone);
-
     return reducedTigerMobility < initialTigerMobility;
+  }
+
+  bool _isGoatPositionSafeOn(
+    List<List<Point>> boardState,
+    Point position, {
+    bool log = false,
+  }) {
+    for (final tiger in boardState.expand((row) => row).where((p) => p.type == PieceType.tiger)) {
+      if ((position.x - tiger.x).abs() <= 1 && (position.y - tiger.y).abs() <= 1) {
+        int dx = position.x - tiger.x;
+        int dy = position.y - tiger.y;
+        int jumpX = position.x + dx;
+        int jumpY = position.y + dy;
+        if (jumpX >= 0 && jumpX < boardState.length && jumpY >= 0 && jumpY < boardState[0].length) {
+          if (boardState[jumpX][jumpY].type == PieceType.empty) {
+            if (!_isStrategicBlockOn(boardState, position, Point(x: jumpX, y: jumpY))) {
+              if (log) {
+                debugPrint("Position ${position.x}, ${position.y} is unsafe due to tiger at ${tiger.x}, ${tiger.y}");
+              }
+              return false;
+            }
+          }
+        }
+      }
+    }
+    return true;
   }
 
   bool _isGoatPositionSafeForAaduPuli(Point goatPosition) {
@@ -1077,7 +1092,7 @@ class GameController extends ChangeNotifier {
     int wallGoats = boardState[2].where((p) => p.type == PieceType.goat).length;
 
     int unsafeGoats = boardState.expand((row) => row)
-        .where((p) => p.type == PieceType.goat && !_isGoatPositionSafe(p))
+        .where((p) => p.type == PieceType.goat && !_isGoatPositionSafeOn(boardState, p, log: false))
         .length;
 
     double tigerMobilityScore = (20 - tigerMoves) * 10.0; 
@@ -1246,15 +1261,32 @@ class GameController extends ChangeNotifier {
 
 
   double _calculateBlockScore(Point goatPosition) {
+    // Delegate to board-aware version using the current board
+    return _calculateBlockScoreForBoard(board, goatPosition);
+  }
+
+  double _calculateBlockScoreForBoard(List<List<Point>> boardState, Point goatPosition) {
+    // Reward occupying landing cells of potential tiger jumps (which blocks captures)
+    // Penalize occupying the middle cell of a potential jump (which enables capture)
     double score = 0.0;
-    for (var tiger in board.expand((row) => row).where((p) => p.type == PieceType.tiger)) {
-      var tigerMoves = square.SquareBoardLogic.getValidMoves(tiger, board);
+    for (var tiger in boardState.expand((row) => row).where((p) => p.type == PieceType.tiger)) {
+      var tigerMoves = square.SquareBoardLogic.getValidMoves(tiger, boardState);
       for (var move in tigerMoves) {
         if ((move.x - tiger.x).abs() == 2 || (move.y - tiger.y).abs() == 2) {
+          // Jump move: middle cell and landing cell
           int midX = (tiger.x + move.x) ~/ 2;
           int midY = (tiger.y + move.y) ~/ 2;
-          if (midX == goatPosition.x && midY == goatPosition.y) {
+          int landingX = move.x;
+          int landingY = move.y;
+
+          // Block by standing on the landing cell
+          if (landingX == goatPosition.x && landingY == goatPosition.y) {
             score += 10.0;
+          }
+
+          // Discourage standing on the middle cell (enables capture)
+          if (midX == goatPosition.x && midY == goatPosition.y) {
+            score -= 10.0;
           }
         }
       }
