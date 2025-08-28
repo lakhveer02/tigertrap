@@ -1389,26 +1389,75 @@ class GameController extends ChangeNotifier {
     return true;
   }
 
-  double _evaluateBoardStateForGoats(List<List<Point>> boardState) {
-    int tigerMoves = boardState.expand((row) => row)
-        .where((p) => p.type == PieceType.tiger)
-        .fold(0, (sum, tiger) => sum + square.SquareBoardLogic.getValidMoves(tiger, boardState).length);
+  double _evaluateBoardStateForGoats(
+    List<List<Point>> boardState, {
+    int? capturedGoatsEval,
+  }) {
+    // Metrics
+    final int blockedTigers = _countBlockedTigersOn(boardState);
+    final int tigerMobility = _totalTigerMobilityOn(boardState);
+    final int unsafeGoats = _countUnsafeGoatsOn(boardState);
+    final int goatConnectivity = _goatConnectivityOn(boardState);
+    final int goatsNearEdges = _goatsNearEdgesOn(boardState);
+    final int goatsCapturedMetric = capturedGoatsEval ?? capturedGoats;
 
-    int goatMoves = boardState.expand((row) => row)
-        .where((p) => p.type == PieceType.goat)
-        .fold(0, (sum, goat) => sum + square.SquareBoardLogic.getValidMoves(goat, boardState).length);
+    // Dynamic edge weight: stronger during early placement, taper later
+    final double edgeWeight = placedGoats < 10 ? 20.0 : 8.0;
 
-    int wallGoats = boardState[2].where((p) => p.type == PieceType.goat).length;
+    // Weighted score from goat perspective
+    final double score =
+        (500.0 * blockedTigers) +
+        (-12.0 * tigerMobility) +
+        (-200.0 * unsafeGoats) +
+        (8.0 * goatConnectivity) +
+        (edgeWeight * goatsNearEdges) +
+        (-80.0 * goatsCapturedMetric);
 
-    int unsafeGoats = boardState.expand((row) => row)
-        .where((p) => p.type == PieceType.goat && !_isGoatPositionSafeOn(boardState, p, log: false))
-        .length;
+    return score;
+  }
 
-    double tigerMobilityScore = (20 - tigerMoves) * 10.0; 
-    double wallScore = wallGoats * 20.0; 
-    double unsafePenalty = unsafeGoats * -50.0; 
+  int _countBlockedTigersOn(List<List<Point>> boardState) {
+    int blocked = 0;
+    for (final tiger in boardState.expand((row) => row).where((p) => p.type == PieceType.tiger)) {
+      if (square.SquareBoardLogic.getValidMoves(tiger, boardState).isEmpty) blocked++;
+    }
+    return blocked;
+  }
 
-    return tigerMobilityScore + wallScore + goatMoves * 1.0 + unsafePenalty;
+  int _totalTigerMobilityOn(List<List<Point>> boardState) {
+    int moves = 0;
+    for (final tiger in boardState.expand((row) => row).where((p) => p.type == PieceType.tiger)) {
+      moves += square.SquareBoardLogic.getValidMoves(tiger, boardState).length;
+    }
+    return moves;
+  }
+
+  int _countUnsafeGoatsOn(List<List<Point>> boardState) {
+    int count = 0;
+    for (final goat in boardState.expand((row) => row).where((p) => p.type == PieceType.goat)) {
+      if (!_isGoatPositionSafeOn(boardState, goat, log: false)) count++;
+    }
+    return count;
+  }
+
+  int _goatConnectivityOn(List<List<Point>> boardState) {
+    int connected = 0;
+    for (final goat in boardState.expand((row) => row).where((p) => p.type == PieceType.goat)) {
+      if (goat.adjacentPoints.any((adj) => adj.type == PieceType.goat)) connected++;
+    }
+    return connected;
+  }
+
+  int _goatsNearEdgesOn(List<List<Point>> boardState) {
+    int count = 0;
+    final int maxX = boardState.length - 1;
+    final int maxY = boardState[0].length - 1;
+    for (final p in boardState.expand((row) => row)) {
+      if (p.type == PieceType.goat && (p.x == 0 || p.y == 0 || p.x == maxX || p.y == maxY)) {
+        count++;
+      }
+    }
+    return count;
   }
 
   Map<String, Point> _chooseHardMove(List<Map<String, Point>> allMoves) {
@@ -1422,6 +1471,11 @@ class GameController extends ChangeNotifier {
       from.type = PieceType.empty;
       to.type = PieceType.goat;
 
+      // Immediate trap: if all tigers blocked after this goat move, pick it immediately
+      if (_areAllTigersBlockedOn(boardClone)) {
+        return move;
+      }
+
       List<Map<String, Point>> tigerMoves = [];
       for (var row in boardClone) {
         for (var tiger in row.where((p) => p.type == PieceType.tiger)) {
@@ -1433,15 +1487,19 @@ class GameController extends ChangeNotifier {
       }
 
       double worstTigerScore = double.infinity;
-      for (final tigerMove in tigerMoves) {
-        var tigerBoardClone = _cloneSquareBoard(boardClone);
-        var tigerFrom = tigerBoardClone[tigerMove['from']!.x][tigerMove['from']!.y];
-        var tigerTo = tigerBoardClone[tigerMove['to']!.x][tigerMove['to']!.y];
-        tigerFrom.type = PieceType.empty;
-        tigerTo.type = PieceType.tiger;
+      if (tigerMoves.isEmpty) {
+        worstTigerScore = _evaluateBoardStateForGoats(boardClone, capturedGoatsEval: capturedGoats) + 10000.0;
+      } else {
+        for (final tigerMove in tigerMoves) {
+          var tigerBoardClone = _cloneSquareBoard(boardClone);
+          var tigerFrom = tigerBoardClone[tigerMove['from']!.x][tigerMove['from']!.y];
+          var tigerTo = tigerBoardClone[tigerMove['to']!.x][tigerMove['to']!.y];
+          tigerFrom.type = PieceType.empty;
+          tigerTo.type = PieceType.tiger;
 
-        double score = _evaluateBoardStateForGoats(tigerBoardClone);
-        worstTigerScore = score < worstTigerScore ? score : worstTigerScore;
+          double score = _evaluateBoardStateForGoats(tigerBoardClone, capturedGoatsEval: capturedGoats);
+          worstTigerScore = score < worstTigerScore ? score : worstTigerScore;
+        }
       }
 
       if (worstTigerScore > bestScore) {
