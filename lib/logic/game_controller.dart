@@ -99,10 +99,16 @@ class GameController extends ChangeNotifier {
       _placeGoat(point);
       debugPrint("Placed goat at ${point.x}, ${point.y}");
     } else {
+      // Preserve selection and validity before executing, so logs are accurate
+      final Point? fromBefore = selectedPiece;
+      final List<Point> validBefore = fromBefore != null ? _getValidMoves(fromBefore) : const [];
+      final bool willMove = fromBefore != null && validBefore.contains(point);
       _handleMovement(point);
-      debugPrint(
-        "Moved piece from ${selectedPiece?.x}, ${selectedPiece?.y} to ${point.x}, ${point.y}",
-      );
+      if (willMove) {
+        debugPrint(
+          "Moved piece from ${fromBefore!.x}, ${fromBefore.y} to ${point.x}, ${point.y}",
+        );
+      }
     }
     _playTurnAudio();
     _checkWinConditions();
@@ -271,10 +277,38 @@ class GameController extends ChangeNotifier {
     // Hard mode priority 1: block imminent tiger jumps by occupying landing squares
     if (difficulty == Difficulty.hard) {
       final threats = _getCurrentJumpThreats();
+      // Prefer safe landing blocks first
+      Point? bestSafeBlock;
+      for (final t in threats) {
+        final landing = t.landing;
+        if (landing.type != PieceType.empty) continue;
+        if (boardType == BoardType.square) {
+          final bClone = _cloneSquareBoard(board);
+          final landC = bClone[landing.x][landing.y];
+          landC.type = PieceType.goat;
+          if (!_tigerCanCaptureAfter(bClone, landC)) {
+            bestSafeBlock = landing;
+            break;
+          }
+        } else if (boardConfig != null) {
+          final cfg = _cloneAaduPuliConfig(boardConfig!);
+          final landC = cfg.nodes.firstWhere((n) => n.id == landing.id);
+          landC.type = PieceType.goat;
+          if (!_tigerCanCaptureAfterConfig(cfg, landC)) {
+            bestSafeBlock = landing;
+            break;
+          }
+        }
+      }
+      if (bestSafeBlock != null) {
+        debugPrint("[hard AI] Blocking tiger jump by placing at ${bestSafeBlock.x}, ${bestSafeBlock.y}");
+        _placeGoat(bestSafeBlock);
+        return;
+      }
+      // If none are safe, still block the first available landing to prevent immediate capture
       for (final t in threats) {
         final landing = t.landing;
         if (landing.type == PieceType.empty) {
-          // In hard mode, block even if not perfectly safe if it's the only way to stop capture
           debugPrint("[hard AI] Blocking tiger jump by placing at ${landing.x}, ${landing.y}");
           _placeGoat(landing);
           return;
@@ -323,37 +357,47 @@ class GameController extends ChangeNotifier {
     if (boardType == BoardType.square) {
       for (var point in emptyPoints) {
         if (unsafeMoveHistory.contains('${point.x},${point.y}')) continue;
-        final isSafe = _isGoatPositionSafe(point);
-        if (difficulty == Difficulty.hard && !isSafe) continue;
 
-        point.type = PieceType.goat; // simulate
+        // Simulate on a cloned board; do not mutate the real board
+        final boardClone = _cloneSquareBoard(board);
+        final simulated = boardClone[point.x][point.y];
+        simulated.type = PieceType.goat;
+
+        // Hard mode: skip clearly unsafe placements
+        if (difficulty == Difficulty.hard && _tigerCanCaptureAfter(boardClone, simulated)) {
+          continue;
+        }
+
         double score = 0;
         score += _calculateOuterWallScore(point) * 600;
-        score += _calculateBlockScore(point) * 300;
-        score += _clusterBonus(board, point) * 150;
-        score += _reducesTigerMobility(point) ? 200.0 : 0.0;
-        score -= _tigerCanCaptureAfter(board, point) ? 500.0 : 0.0;
+        score += _calculateBlockScoreForBoard(boardClone, simulated) * 300;
+        score += _clusterBonus(boardClone, simulated) * 150;
 
-        // Simulate tiger response (pessimistic)
+        // Mobility reduction compared to current board
+        final int initialMobility = _calculateTigerMobility(board);
+        final int reducedMobility = _calculateTigerMobility(boardClone);
+        score += (reducedMobility < initialMobility) ? 200.0 : 0.0;
+
+        // Pessimistic tiger response from this simulated state
         double worstTigerScore = double.infinity;
-        for (var tiger in board.expand((row) => row).where((p) => p.type == PieceType.tiger)) {
-          var tigerMoves = square.SquareBoardLogic.getValidMoves(tiger, board);
+        for (var tiger in boardClone.expand((row) => row).where((p) => p.type == PieceType.tiger)) {
+          var tigerMoves = square.SquareBoardLogic.getValidMoves(tiger, boardClone);
           for (var move in tigerMoves) {
-            var boardClone = _cloneSquareBoard(board);
-            var from = boardClone[tiger.x][tiger.y];
-            var to = boardClone[move.x][move.y];
+            var tigerBoard = _cloneSquareBoard(boardClone);
+            var from = tigerBoard[tiger.x][tiger.y];
+            var to = tigerBoard[move.x][move.y];
             from.type = PieceType.empty;
             to.type = PieceType.tiger;
-            double tigerScore = _evaluateBoardStateForGoats(boardClone);
+            double tigerScore = _evaluateBoardStateForGoats(tigerBoard);
             worstTigerScore = tigerScore < worstTigerScore ? tigerScore : worstTigerScore;
           }
         }
         score -= worstTigerScore * 0.5;
+
         if (score > bestScore) {
           bestScore = score;
           bestPlacement = point;
         }
-        point.type = PieceType.empty; // undo
       }
     } else if (boardConfig != null) {
       for (var point in emptyPoints) {
