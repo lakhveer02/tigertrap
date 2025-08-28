@@ -274,14 +274,10 @@ class GameController extends ChangeNotifier {
       for (final t in threats) {
         final landing = t.landing;
         if (landing.type == PieceType.empty) {
-          final safe = boardType == BoardType.square
-              ? _isGoatPositionSafe(landing)
-              : _isGoatPositionSafeForAaduPuli(landing);
-          if (safe) {
-            debugPrint("[hard AI] Blocking tiger jump by placing at ${landing.x}, ${landing.y}");
-            _placeGoat(landing);
-            return;
-          }
+          // In hard mode, block even if not perfectly safe if it's the only way to stop capture
+          debugPrint("[hard AI] Blocking tiger jump by placing at ${landing.x}, ${landing.y}");
+          _placeGoat(landing);
+          return;
         }
       }
     }
@@ -511,9 +507,15 @@ class GameController extends ChangeNotifier {
         from.type = PieceType.empty;
         to.type = PieceType.goat;
 
-        if (difficulty == Difficulty.hard && _tigerCanCaptureAfter(boardClone, to)) {
-          continue; // never expose to immediate capture in hard mode
+        // If this move blocks all tigers, do it immediately
+        if (_areAllTigersBlockedOn(boardClone)) {
+          debugPrint("[hard AI] Move traps tigers; executing immediately.");
+          _executeMove(move['from']!, move['to']!);
+          currentTurn = PieceType.tiger;
+          return;
         }
+
+        if (difficulty == Difficulty.hard && _tigerCanCaptureAfter(boardClone, to)) continue;
 
         double score = 0;
         score += _reducesTigerMobility(to) ? 300.0 : 0.0;
@@ -532,6 +534,13 @@ class GameController extends ChangeNotifier {
         final toC = cfgClone.nodes.firstWhere((n) => n.id == move['to']!.id);
         fromC.type = PieceType.empty;
         toC.type = PieceType.goat;
+
+        if (_areAllTigersBlockedOnConfig(cfgClone)) {
+          debugPrint("[hard AI] Move traps tigers (Aadu Puli); executing immediately.");
+          _executeMove(move['from']!, move['to']!);
+          currentTurn = PieceType.tiger;
+          return;
+        }
 
         if (difficulty == Difficulty.hard && _tigerCanCaptureAfterConfig(cfgClone, toC)) {
           continue;
@@ -561,7 +570,24 @@ class GameController extends ChangeNotifier {
 
   bool _isGoatPositionSafe(Point position) {
     if (boardType == BoardType.square) {
-      return _isGoatPositionSafeOn(board, position, log: true);
+      for (final tiger in board.expand((row) => row).where((p) => p.type == PieceType.tiger)) {
+        if ((position.x - tiger.x).abs() <= 1 && (position.y - tiger.y).abs() <= 1) {
+          int dx = position.x - tiger.x;
+          int dy = position.y - tiger.y;
+          int jumpX = position.x + dx;
+          int jumpY = position.y + dy;
+
+          if (jumpX >= 0 && jumpX < 5 && jumpY >= 0 && jumpY < 5) {
+            if (board[jumpX][jumpY].type == PieceType.empty) {
+              // Check if blocking the landing point is strategically beneficial
+              if (!_isStrategicBlock(position, Point(x: jumpX, y: jumpY))) {
+                return false;
+              }
+            }
+          }
+        }
+      }
+      return true;
     } else {
       return _isGoatPositionSafeForAaduPuli(position);
     }
@@ -1252,6 +1278,13 @@ class GameController extends ChangeNotifier {
     return true;
   }
 
+  bool _areAllTigersBlockedOn(List<List<Point>> boardState) {
+    for (var tiger in boardState.expand((row) => row).where((p) => p.type == PieceType.tiger)) {
+      if (square.SquareBoardLogic.getValidMoves(tiger, boardState).isNotEmpty) return false;
+    }
+    return true;
+  }
+
   double _evaluateBoardStateForGoats(List<List<Point>> boardState) {
     int tigerMoves = boardState.expand((row) => row)
         .where((p) => p.type == PieceType.tiger)
@@ -1579,5 +1612,12 @@ class GameController extends ChangeNotifier {
       }
     }
     return false;
+  }
+
+  bool _areAllTigersBlockedOnConfig(BoardConfig cfg) {
+    for (final tiger in cfg.nodes.where((n) => n.type == PieceType.tiger)) {
+      if (aadu.AaduPuliLogic.getValidMoves(tiger, cfg).isNotEmpty) return false;
+    }
+    return true;
   }
 }
