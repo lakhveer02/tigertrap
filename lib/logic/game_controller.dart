@@ -48,6 +48,7 @@ class GameController extends ChangeNotifier {
   Set<String> unsafeMoveHistory = {};
 
   Set<String> moveHistory = {};
+  String? lastGoatMoveKey;
 
   GameController() {
     resetGame();
@@ -402,13 +403,11 @@ class GameController extends ChangeNotifier {
       // If there are no landing blocks, continue with other priorities
     }
 
-    // Hard mode priority 2: on square board, cover outer walls before center (early phase)
+    // Hard mode priority 2: on square board, strictly cover outer walls before center until edges filled
     if (difficulty == Difficulty.hard && boardType == BoardType.square) {
-      if (placedGoats <= 12) {
-        final wallEmpties = emptyPoints.where(_isEdgeSquare).toList();
-        if (wallEmpties.isNotEmpty) {
-          emptyPoints = wallEmpties;
-        }
+      final wallEmpties = emptyPoints.where(_isEdgeSquare).toList();
+      if (wallEmpties.isNotEmpty) {
+        emptyPoints = wallEmpties;
       }
     }
 
@@ -457,15 +456,15 @@ class GameController extends ChangeNotifier {
         }
 
         double score = 0;
-        // Emphasize edges early
-        score += _calculateOuterWallScore(point) * (placedGoats <= 12 ? 800 : 300);
-        score += _calculateBlockScoreForBoard(boardClone, simulated) * 300;
-        score += _clusterBonus(boardClone, simulated) * 200;
+        // Stronger emphasis on edges until fully covered
+        score += _calculateOuterWallScore(point) * (placedGoats <= 12 ? 1200 : 400);
+        score += _calculateBlockScoreForBoard(boardClone, simulated) * 400;
+        score += _clusterBonus(boardClone, simulated) * 250;
 
         // Mobility reduction compared to current board
         final int initialMobility = _calculateTigerMobility(board);
         final int reducedMobility = _calculateTigerMobility(boardClone);
-        score += (reducedMobility < initialMobility) ? 250.0 : 0.0;
+        score += (reducedMobility < initialMobility) ? 350.0 : 0.0;
 
         // Pessimistic tiger response from this simulated state
         double worstTigerScore = double.infinity;
@@ -481,7 +480,7 @@ class GameController extends ChangeNotifier {
             worstTigerScore = tigerScore < worstTigerScore ? tigerScore : worstTigerScore;
           }
         }
-        score -= worstTigerScore * 0.25;
+        score -= worstTigerScore * 0.35;
 
         if (score > bestScore) {
           bestScore = score;
@@ -720,8 +719,11 @@ class GameController extends ChangeNotifier {
     Map<String, Point>? bestMove;
     double bestScore = double.negativeInfinity;
 
+    // Anti-oscillation: avoid immediately reversing the last goat move if alternatives exist
+    final List<Map<String, Point>> candidateMoves = _filterAntiOscillation(allMoves);
+
     if (boardType == BoardType.square) {
-      for (final move in allMoves) {
+      for (final move in candidateMoves) {
         final boardClone = _cloneSquareBoard(board);
         final from = boardClone[move['from']!.x][move['from']!.y];
         final to = boardClone[move['to']!.x][move['to']!.y];
@@ -796,7 +798,7 @@ class GameController extends ChangeNotifier {
         }
       }
     } else if (boardConfig != null) {
-      for (final move in allMoves) {
+      for (final move in candidateMoves) {
         final cfgClone = _cloneAaduPuliConfig(boardConfig!);
         final fromC = cfgClone.nodes.firstWhere((n) => n.id == move['from']!.id);
         final toC = cfgClone.nodes.firstWhere((n) => n.id == move['to']!.id);
@@ -1058,6 +1060,10 @@ class GameController extends ChangeNotifier {
           : (goatPlayer == PlayerType.computer ? 'AI' : 'Human');
       final side = isTigerMove ? 'Tiger' : 'Goat';
       debugPrint('[confirm] $controller $side moved from ${from.x}, ${from.y} to ${to.x}, ${to.y}');
+    }
+    // Track last goat move to reduce oscillation in hard mode
+    if (moverType == PieceType.goat) {
+      lastGoatMoveKey = '${from.x},${from.y}->${to.x},${to.y}';
     }
     notifyListeners();
   }
@@ -1932,6 +1938,25 @@ class GameController extends ChangeNotifier {
 
   bool _isEdgeSquare(Point p) {
     return p.x == 0 || p.x == 4 || p.y == 0 || p.y == 4;
+  }
+
+  List<Map<String, Point>> _filterAntiOscillation(List<Map<String, Point>> moves) {
+    if (lastGoatMoveKey == null || moves.length <= 1) return moves;
+    // Reverse of last move becomes from==last.to and to==last.from
+    final parts = lastGoatMoveKey!.split('->');
+    if (parts.length != 2) return moves;
+    final fromStr = parts[0];
+    final toStr = parts[1];
+    final fromParts = fromStr.split(',');
+    final toParts = toStr.split(',');
+    if (fromParts.length != 2 || toParts.length != 2) return moves;
+    final lastFromX = int.tryParse(fromParts[0]);
+    final lastFromY = int.tryParse(fromParts[1]);
+    final lastToX = int.tryParse(toParts[0]);
+    final lastToY = int.tryParse(toParts[1]);
+    if (lastFromX == null || lastFromY == null || lastToX == null || lastToY == null) return moves;
+    final filtered = moves.where((m) => !(m['from']!.x == lastToX && m['from']!.y == lastToY && m['to']!.x == lastFromX && m['to']!.y == lastFromY)).toList();
+    return filtered.isNotEmpty ? filtered : moves;
   }
 
   double _clusterBonusConfig(BoardConfig cfg, Point goatPosition) {
