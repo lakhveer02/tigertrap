@@ -52,6 +52,10 @@ class RulesScreen extends StatelessWidget {
                     ),
                     _buildRuleItem(
                       context,
+                      'In one Tiger turn, only one move or jump. Then turn switches to Goat.',
+                    ),
+                    _buildRuleItem(
+                      context,
                       'Goats win by blocking all tiger moves',
                     ),
                     _buildRuleItem(context, 'Tigers win by capturing 5 goats'),
@@ -78,6 +82,10 @@ class RulesScreen extends StatelessWidget {
                     _buildRuleItem(
                       context,
                       'Tigers can capture goats by jumping over them',
+                    ),
+                    _buildRuleItem(
+                      context,
+                      'In one Tiger turn, only one move or jump. Then turn switches to Goat.',
                     ),
                     _buildRuleItem(
                       context,
