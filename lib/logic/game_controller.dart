@@ -1217,15 +1217,21 @@ class GameController extends ChangeNotifier {
       PieceType currentTurnClone = currentTurn;
 
       if (boardType == BoardType.square) {
+        final fromClone = boardClone![move['from']!.x][move['from']!.y];
+        final toClone = boardClone[move['to']!.x][move['to']!.y];
         square.SquareBoardLogic.executeMove(
-          move['from']!,
-          move['to']!,
-          boardClone!,
+          fromClone,
+          toClone,
+          boardClone,
         );
       } else if (boardType == BoardType.aaduPuli && boardConfigClone != null) {
+        final fromClone = boardConfigClone.nodes
+            .firstWhere((n) => n.id == move['from']!.id);
+        final toClone = boardConfigClone.nodes
+            .firstWhere((n) => n.id == move['to']!.id);
         aadu.AaduPuliLogic.executeMove(
-          move['from']!,
-          move['to']!,
+          fromClone,
+          toClone,
           boardConfigClone,
         );
       }
@@ -1341,9 +1347,13 @@ class GameController extends ChangeNotifier {
       int cgClone = capturedGoatsClone;
       int pgClone = placedGoatsClone;
       if (boardType == BoardType.square && bClone != null) {
-        square.SquareBoardLogic.executeMove(move['from']!, move['to']!, bClone);
+        final fromClone = bClone[move['from']!.x][move['from']!.y];
+        final toClone = bClone[move['to']!.x][move['to']!.y];
+        square.SquareBoardLogic.executeMove(fromClone, toClone, bClone);
       } else if (boardType == BoardType.aaduPuli && bcClone != null) {
-        aadu.AaduPuliLogic.executeMove(move['from']!, move['to']!, bcClone);
+        final fromClone = bcClone.nodes.firstWhere((n) => n.id == move['from']!.id);
+        final toClone = bcClone.nodes.firstWhere((n) => n.id == move['to']!.id);
+        aadu.AaduPuliLogic.executeMove(fromClone, toClone, bcClone);
       }
       bool isCapture = !_areAdjacent(move['from']!, move['to']!);
       if (isCapture) cgClone++;
