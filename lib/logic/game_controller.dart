@@ -1201,11 +1201,23 @@ class GameController extends ChangeNotifier {
     double alpha,
     double beta,
   ) {
+    // In hard mode, if it's the tiger's move and a capture is available,
+    // restrict consideration to capture moves so AI always captures when possible.
+    final List<Map<String, Point>> movesToConsider =
+        (difficulty == Difficulty.hard && currentTurn == PieceType.tiger)
+            ? (() {
+                final caps = moves
+                    .where((m) => _isJump(m['from']!, m['to']!))
+                    .toList();
+                return caps.isNotEmpty ? caps : moves;
+              })()
+            : moves;
+
     Map<String, Point>? bestMove;
     double bestValue =
         maximizingPlayer ? double.negativeInfinity : double.infinity;
 
-    for (final move in moves) {
+    for (final move in movesToConsider) {
       var boardClone =
           boardType == BoardType.square ? _cloneSquareBoard(board) : null;
       var boardConfigClone =
@@ -1318,7 +1330,7 @@ class GameController extends ChangeNotifier {
         if (beta <= alpha) break;
       }
     }
-    return bestMove ?? moves.first;
+    return bestMove ?? movesToConsider.first;
   }
 
   double _minimaxValue(
