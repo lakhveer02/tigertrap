@@ -993,6 +993,42 @@ class GameController extends ChangeNotifier {
             return (threateningMoves..shuffle()).first;
           return (moves..shuffle()).first;
         case Difficulty.hard:
+          // Hard mode: if an immediate capture exists, take it without searching
+          final captureMoves =
+              moves.where((m) => _isJump(m['from']!, m['to']!)).toList();
+          if (captureMoves.isNotEmpty) {
+            // Prefer captures that enable further captures next move
+            Map<String, Point>? bestCap;
+            int bestFollowUps = -1;
+            for (final cap in captureMoves) {
+              final from = cap['from']!;
+              final to = cap['to']!;
+              if (boardType == BoardType.square) {
+                final bClone = _cloneSquareBoard(board);
+                final fromC = bClone[from.x][from.y];
+                final toC = bClone[to.x][to.y];
+                square.SquareBoardLogic.executeMove(fromC, toC, bClone);
+                final nextMoves = square.SquareBoardLogic.getValidMoves(toC, bClone);
+                final followUps = nextMoves.where((p) => !_areAdjacent(toC, p)).length;
+                if (followUps > bestFollowUps) {
+                  bestFollowUps = followUps;
+                  bestCap = cap;
+                }
+              } else if (boardConfig != null) {
+                final cfgClone = _cloneAaduPuliConfig(boardConfig!);
+                final fromC = cfgClone.nodes.firstWhere((n) => n.id == from.id);
+                final toC = cfgClone.nodes.firstWhere((n) => n.id == to.id);
+                aadu.AaduPuliLogic.executeMove(fromC, toC, cfgClone);
+                final nextMoves = aadu.AaduPuliLogic.getValidMoves(toC, cfgClone);
+                final followUps = nextMoves.where((p) => !toC.adjacentPoints.contains(p)).length;
+                if (followUps > bestFollowUps) {
+                  bestFollowUps = followUps;
+                  bestCap = cap;
+                }
+              }
+            }
+            return bestCap ?? captureMoves.first;
+          }
           return _minimaxMove(
             moves,
             2,
