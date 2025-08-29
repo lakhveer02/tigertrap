@@ -349,56 +349,6 @@ class GameController extends ChangeNotifier {
           _placeGoat(bestSafeBlock);
           return;
         }
-      } else if (allLandingBlocks.isNotEmpty) {
-        // Fallback: pick the landing block that most reduces imminent jump threats even if unsafe
-        Point? bestBlock;
-        double bestScore = double.negativeInfinity;
-        if (boardType == BoardType.square) {
-          final int threatsBefore = _countJumpThreatsOn(board);
-          for (final landing in allLandingBlocks) {
-            // Avoid repeating previously unsafe fallback placements
-            if (unsafeMoveHistory.contains('${landing.x},${landing.y}')) {
-              continue;
-            }
-            final bClone = _cloneSquareBoard(board);
-            final landC = bClone[landing.x][landing.y];
-            landC.type = PieceType.goat;
-            final int threatsAfter = _countJumpThreatsOn(bClone);
-            double score = (threatsBefore - threatsAfter) * 1000.0;
-            // Strongly prefer edges/corners on unsafe fallback to avoid inner traps
-            score += _calculateOuterWallScore(landing) * 800;
-            score += _clusterBonus(bClone, landC) * 50;
-            if (score > bestScore) {
-              bestScore = score;
-              bestBlock = landing;
-            }
-          }
-        } else if (boardConfig != null) {
-          final int threatsBefore = _countJumpThreatsOnConfig(boardConfig!);
-          for (final landing in allLandingBlocks) {
-            // Avoid repeating previously unsafe fallback placements
-            if (unsafeMoveHistory.contains('${landing.x},${landing.y}')) {
-              continue;
-            }
-            final cfg = _cloneAaduPuliConfig(boardConfig!);
-            final landC = cfg.nodes.firstWhere((n) => n.id == landing.id);
-            landC.type = PieceType.goat;
-            final int threatsAfter = _countJumpThreatsOnConfig(cfg);
-            double score = (threatsBefore - threatsAfter) * 1000.0;
-            score += _clusterBonusConfig(cfg, landC) * 50;
-            if (score > bestScore) {
-              bestScore = score;
-              bestBlock = landing;
-            }
-          }
-        }
-        if (bestBlock != null) {
-          debugPrint("[hard AI] Blocking tiger jump by placing (unsafe fallback) at ${bestBlock.x}, ${bestBlock.y}");
-          // Record this unsafe fallback position so we do not repeat it
-          unsafeMoveHistory.add('${bestBlock.x},${bestBlock.y}');
-          _placeGoat(bestBlock);
-          return;
-        }
       }
       // If there are no landing blocks, continue with other priorities
     }
@@ -664,55 +614,7 @@ class GameController extends ChangeNotifier {
         return;
       }
 
-      // Fallback: if no safe block move found, choose a block that reduces threats most, even if unsafe
-      Map<String, Point>? bestUnsafeBlockMove;
-      double bestUnsafeScore = double.negativeInfinity;
-      if (threats.isNotEmpty) {
-        if (boardType == BoardType.square) {
-          final int threatsBefore = _countJumpThreatsOn(board);
-          for (final move in allMoves) {
-            // Consider moves that occupy any current landing
-            if (!threats.any((t) => t.landing == move['to'])) continue;
-            final boardClone = _cloneSquareBoard(board);
-            final fromC = boardClone[move['from']!.x][move['from']!.y];
-            final toC = boardClone[move['to']!.x][move['to']!.y];
-            fromC.type = PieceType.empty;
-            toC.type = PieceType.goat;
-            final int threatsAfter = _countJumpThreatsOn(boardClone);
-            double score = (threatsBefore - threatsAfter) * 1000.0;
-            score += _clusterBonus(boardClone, toC) * 20;
-            score += _reducesTigerMobility(toC) ? 10 : 0;
-            if (score > bestUnsafeScore) {
-              bestUnsafeScore = score;
-              bestUnsafeBlockMove = move;
-            }
-          }
-        } else if (boardConfig != null) {
-          final int threatsBefore = _countJumpThreatsOnConfig(boardConfig!);
-          for (final move in allMoves) {
-            if (!threats.any((t) => t.landing.id == move['to']!.id)) continue;
-            final cfgClone = _cloneAaduPuliConfig(boardConfig!);
-            final fromC = cfgClone.nodes.firstWhere((n) => n.id == move['from']!.id);
-            final toC = cfgClone.nodes.firstWhere((n) => n.id == move['to']!.id);
-            fromC.type = PieceType.empty;
-            toC.type = PieceType.goat;
-            final int threatsAfter = _countJumpThreatsOnConfig(cfgClone);
-            double score = (threatsBefore - threatsAfter) * 1000.0;
-            score += _clusterBonusConfig(cfgClone, toC) * 20;
-            score += _reducesTigerMobilityConfig(cfgClone, toC) ? 10 : 0;
-            if (score > bestUnsafeScore) {
-              bestUnsafeScore = score;
-              bestUnsafeBlockMove = move;
-            }
-          }
-        }
-      }
-      if (bestUnsafeBlockMove != null) {
-        debugPrint("[hard AI] Blocking tiger jump (unsafe fallback) by moving from ${bestUnsafeBlockMove['from']!.x},${bestUnsafeBlockMove['from']!.y} to ${bestUnsafeBlockMove['to']!.x},${bestUnsafeBlockMove['to']!.y}");
-        _executeMove(bestUnsafeBlockMove['from']!, bestUnsafeBlockMove['to']!);
-        currentTurn = PieceType.tiger;
-        return;
-      }
+      // No unsafe fallback in hard mode: if we can't safely block, proceed to scoring
     }
 
     // Otherwise, use defensive minimax (goat -> tiger replies) in hard mode
