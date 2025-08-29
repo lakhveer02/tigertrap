@@ -450,6 +450,17 @@ class GameController extends ChangeNotifier {
       }
     }
 
+    // Hard mode priority 2.2: deterministic opening sequence to progressively cage tigers
+    // Follows a perimeter-first then key-center pattern matching the provided strategy
+    if (difficulty == Difficulty.hard && boardType == BoardType.square) {
+      final Point? openingPick = _nextOpeningBookPlacementSquare(onlyFrom: emptyPoints);
+      if (openingPick != null) {
+        debugPrint("[hard AI] Opening sequence: placing at ${openingPick.x}, ${openingPick.y}");
+        _placeGoat(openingPick);
+        return;
+      }
+    }
+
     // Hard mode priority 3: if any placement immediately blocks all tigers, do it
     if (difficulty == Difficulty.hard) {
       if (boardType == BoardType.square) {
@@ -2045,6 +2056,41 @@ class GameController extends ChangeNotifier {
 
   bool _isEdgeSquare(Point p) {
     return p.x == 0 || p.x == 4 || p.y == 0 || p.y == 4;
+  }
+
+  // ===== Hard-mode opening book for square board goats =====
+  // Returns the next preferred opening placement if it's empty and safe
+  Point? _nextOpeningBookPlacementSquare({required List<Point> onlyFrom}) {
+    // Opening order designed to match the requested blocking sequence
+    // Perimeter (excluding tiger corners) -> then center/near-center pattern
+    final List<List<int>> order = [
+      // Top edge (skip corners because tigers start there)
+      [0, 2], [0, 1], [0, 3],
+      // Left edge (middle to tighten corner)
+      [2, 0], [1, 0], [3, 0],
+      // Right edge
+      [2, 4], [1, 4], [3, 4],
+      // Bottom edge (skip corners)
+      [4, 1], [4, 2], [4, 3],
+      // Interior key points
+      [2, 2], [3, 1], [1, 1], [2, 1], [3, 2], [1, 3], [3, 3],
+    ];
+
+    // Build a quick lookup of allowed candidates based on the caller's filtered list
+    final Set<String> allowed = onlyFrom.map((p) => '${p.x},${p.y}').toSet();
+
+    for (final xy in order) {
+      final int x = xy[0];
+      final int y = xy[1];
+      if (!allowed.contains('$x,$y')) continue; // respect current filtering rules
+      final Point p = board[x][y];
+      if (p.type != PieceType.empty) continue;
+      // Safety check: do not deliberately feed a capture
+      final bool safe = _isGoatPositionSafeOn(board, p, log: false);
+      if (!safe) continue;
+      return p;
+    }
+    return null;
   }
 
   List<Map<String, Point>> _filterAntiOscillation(List<Map<String, Point>> moves) {
