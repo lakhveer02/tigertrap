@@ -764,7 +764,7 @@ class GoatAI {
     }
     
     // Bonus for clustering
-    score += _countAdjacentGoats(to, null, boardConfig, BoardType.aaduPuli) * 10.0;
+    score += _countAdjacentGoats(to, [], boardConfig, BoardType.aaduPuli) * 10.0;
     
     // Penalty for being near tigers
     for (var tiger in boardConfig.nodes.where((n) => n.type == PieceType.tiger)) {
@@ -787,7 +787,7 @@ class GoatAI {
     }
     
     // Clustering bonus
-    score += _countAdjacentGoats(to, null, boardConfig, BoardType.aaduPuli) * 50.0;
+    score += _countAdjacentGoats(to, [], boardConfig, BoardType.aaduPuli) * 50.0;
     
     // Risk penalty
     score -= _calculateAaduPuliRisk(to, boardConfig);
