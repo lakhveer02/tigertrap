@@ -142,7 +142,6 @@ class GameController extends ChangeNotifier {
 
   void makeComputerMove() {
     if (!_isComputerTurn() || gameMessage != null || isPaused) return;
-    final PieceType movedSide = currentTurn;
     if (currentTurn == PieceType.tiger) {
       if (boardType == BoardType.square) {
         _makeSquareComputerMove();
@@ -155,12 +154,7 @@ class GameController extends ChangeNotifier {
     // _playTurnAudio();
     _checkWinConditions();
 
-    // Only schedule another computer move if the turn actually switched
-    // to the opponent and that opponent is also controlled by the computer.
-    if (gameMode == GameMode.pvc &&
-        gameMessage == null &&
-        isComputerTurn() &&
-        currentTurn != movedSide) {
+    if (gameMode == GameMode.pvc && gameMessage == null && isComputerTurn()) {
       scheduleComputerMove(duration: const Duration(milliseconds: 400));
     }
   }
@@ -178,7 +172,18 @@ class GameController extends ChangeNotifier {
     if (moves.isEmpty) return;
     final move = _selectMoveBasedOnDifficulty(moves);
     _executeMove(move['from']!, move['to']!);
-    currentTurn = currentTurn == PieceType.tiger ? PieceType.goat : PieceType.tiger;
+    if (currentTurn == PieceType.tiger) {
+      currentTurn = PieceType.goat;
+      bool allBlocked = _areAllGoatsBlocked();
+      if (allBlocked) {
+        gameMessage = "Goat's turn is skipped";
+        currentTurn = PieceType.tiger;
+        notifyListeners();
+        return;
+      }
+    } else {
+      currentTurn = PieceType.tiger;
+    }
     selectedPiece = null;
     validMoves = [];
     if (gameMessage == "Goat's turn is skipped") gameMessage = null;
@@ -221,7 +226,18 @@ class GameController extends ChangeNotifier {
       }
     }
     _executeMove(move['from']!, move['to']!);
-    currentTurn = currentTurn == PieceType.tiger ? PieceType.goat : PieceType.tiger;
+    if (currentTurn == PieceType.tiger) {
+      currentTurn = PieceType.goat;
+      bool allBlocked = _areAllGoatsBlocked();
+      if (allBlocked) {
+        gameMessage = "Goat's turn is skipped";
+        currentTurn = PieceType.tiger;
+        notifyListeners();
+        return;
+      }
+    } else {
+      currentTurn = PieceType.tiger;
+    }
     selectedPiece = null;
     validMoves = [];
     if (gameMessage == "Goat's turn is skipped") gameMessage = null;
@@ -1000,7 +1016,18 @@ class GameController extends ChangeNotifier {
     } else {
       if (validMoves.contains(point)) {
         _executeMove(selectedPiece!, point);
-        currentTurn = currentTurn == PieceType.tiger ? PieceType.goat : PieceType.tiger;
+        if (currentTurn == PieceType.tiger) {
+          currentTurn = PieceType.goat;
+          bool allBlocked = _areAllGoatsBlocked();
+          if (allBlocked) {
+            gameMessage = "Goat's turn is skipped";
+            currentTurn = PieceType.tiger;
+            notifyListeners();
+            return;
+          }
+        } else {
+          currentTurn = PieceType.tiger;
+        }
       }
       selectedPiece = null;
       validMoves = [];
