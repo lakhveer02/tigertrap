@@ -6,6 +6,8 @@ import '../utils/board_utils.dart';
 import '../models/board_config.dart';
 import '../logic/square_board_logic.dart' as square;
 import '../logic/aadu_puli_logic.dart' as aadu;
+import '../logic/goat_ai.dart';
+import '../logic/tiger_ai.dart';
 import '../providers/background_audio_provider.dart';
 import 'dart:math';
 import 'dart:async';
@@ -159,18 +161,16 @@ class GameController extends ChangeNotifier {
   }
 
   void _makeSquareComputerMove() {
-    final moves = <Map<String, Point>>[];
-    for (var row in board) {
-      for (var piece in row.where((p) => p.type == currentTurn)) {
-        final valid = square.SquareBoardLogic.getValidMoves(piece, board);
-        for (var to in valid) {
-          moves.add({'from': piece, 'to': to});
-        }
-      }
+    if (currentTurn == PieceType.tiger) {
+      // Use Tiger AI
+      final move = TigerAI.moveTiger(board, boardConfig, boardType, difficulty);
+      _executeMove(move['from']!, move['to']!);
+    } else {
+      // Use Goat AI for movement
+      final move = GoatAI.moveGoat(board, boardConfig, boardType, difficulty);
+      _executeMove(move['from']!, move['to']!);
     }
-    if (moves.isEmpty) return;
-    final move = _selectMoveBasedOnDifficulty(moves);
-    _executeMove(move['from']!, move['to']!);
+    
     if (currentTurn == PieceType.tiger) {
       currentTurn = PieceType.goat;
       bool allBlocked = _areAllGoatsBlocked();
@@ -191,40 +191,17 @@ class GameController extends ChangeNotifier {
 
   void _makeAaduPuliComputerMove() {
     if (boardConfig == null) return;
-    final moves = <Map<String, Point>>[];
-    for (final piece in boardConfig!.nodes.where(
-      (n) => n.type == currentTurn,
-    )) {
-      final valid = aadu.AaduPuliLogic.getValidMoves(piece, boardConfig!);
-      for (final to in valid) {
-        moves.add({'from': piece, 'to': to});
-      }
-    }
-    if (moves.isEmpty) return;
-
-    Map<String, Point> move;
-    if (difficulty == Difficulty.easy) {
-      move = (moves..shuffle()).first;
-    } else if (difficulty == Difficulty.medium) {
-      move = moves.firstWhere(
-        (m) =>
-            aadu.AaduPuliLogic.getValidMoves(m['to']!, boardConfig!).isNotEmpty,
-        orElse: () => (moves..shuffle()).first,
-      );
+    
+    if (currentTurn == PieceType.tiger) {
+      // Use Tiger AI
+      final move = TigerAI.moveTiger(board, boardConfig, boardType, difficulty);
+      _executeMove(move['from']!, move['to']!);
     } else {
-      if (playerSide == PlayerSide.goat) {
-        move = moves.first;
-      } else {
-        move = _minimaxMove(
-          moves,
-          2,
-          true,
-          double.negativeInfinity,
-          double.infinity,
-        );
-      }
+      // Use Goat AI for movement
+      final move = GoatAI.moveGoat(board, boardConfig, boardType, difficulty);
+      _executeMove(move['from']!, move['to']!);
     }
-    _executeMove(move['from']!, move['to']!);
+    
     if (currentTurn == PieceType.tiger) {
       currentTurn = PieceType.goat;
       bool allBlocked = _areAllGoatsBlocked();
@@ -245,9 +222,26 @@ class GameController extends ChangeNotifier {
 
   void _makeGoatComputerMove() {
     if (!isGoatMovementPhase) {
-      _goatPlacementAI();
+      // Use Goat AI for placement
+      try {
+        final placement = GoatAI.placeGoat(board, boardConfig, boardType, placedGoats, difficulty, unsafeMoveHistory);
+        _placeGoat(placement);
+      } catch (e) {
+        debugPrint("Goat AI placement error: $e");
+        // Fallback to random placement
+        _goatPlacementAI();
+      }
     } else {
-      _goatMovementAI();
+      // Use Goat AI for movement
+      try {
+        final move = GoatAI.moveGoat(board, boardConfig, boardType, difficulty);
+        _executeMove(move['from']!, move['to']!);
+        currentTurn = PieceType.tiger;
+      } catch (e) {
+        debugPrint("Goat AI movement error: $e");
+        // Fallback to existing AI
+        _goatMovementAI();
+      }
     }
     selectedPiece = null;
     validMoves = [];
@@ -900,48 +894,6 @@ class GameController extends ChangeNotifier {
   }
 
   int _randomInt(int max) => Random().nextInt(max);
-  Map<String, Point> _selectMoveBasedOnDifficulty(
-    List<Map<String, Point>> moves,
-  ) {
-    final isTiger = currentTurn == PieceType.tiger;
-    if (isTiger) {
-      switch (difficulty) {
-        case Difficulty.easy:
-          final captures =
-              moves.where((m) => _isJump(m['from']!, m['to']!)).toList();
-          if (captures.isNotEmpty) return (captures..shuffle()).first;
-          return (moves..shuffle()).first;
-        case Difficulty.medium:
-          final captures =
-              moves.where((m) => _isJump(m['from']!, m['to']!)).toList();
-          if (captures.isNotEmpty) return (captures..shuffle()).first;
-          final threateningMoves =
-              moves
-                  .where(
-                    (m) => m['to']!.adjacentPoints.any(
-                      (adj) =>
-                          adj.type == PieceType.goat &&
-                          adj.adjacentPoints.any(
-                            (adjAdj) => adjAdj.type == PieceType.empty,
-                          ),
-                    ),
-                  )
-                  .toList();
-          if (threateningMoves.isNotEmpty)
-            return (threateningMoves..shuffle()).first;
-          return (moves..shuffle()).first;
-        case Difficulty.hard:
-          return _minimaxMove(
-            moves,
-            2,
-            true,
-            double.negativeInfinity,
-            double.infinity,
-          );
-      }
-    }
-    return moves[_randomInt(moves.length)];
-  }
 
   void _placeGoat(Point point) {
     final maxGoats = boardType == BoardType.square ? 20 : 15;
