@@ -98,29 +98,17 @@ class GoatAI {
     developer.log('Easy mode: ${emptyPoints.length} empty points available');
     
     // Simple random placement with slight preference for edges
-    List<Point> preferredPoints = [];
-    List<Point> otherPoints = [];
+    List<Point> edgePoints = emptyPoints.where((p) => _isEdgePosition(p, board, boardConfig, boardType)).toList();
     
-    for (Point point in emptyPoints) {
-      if (_isEdgePosition(point, board, boardConfig, boardType)) {
-        preferredPoints.add(point);
-      } else {
-        otherPoints.add(point);
-      }
-    }
-    
-    developer.log('Easy mode: ${preferredPoints.length} preferred points, ${otherPoints.length} other points');
-    
-    // 70% chance to pick from preferred (edge) positions
-    if (preferredPoints.isNotEmpty && Random().nextDouble() < 0.7) {
-      Point selected = preferredPoints[Random().nextInt(preferredPoints.length)];
-      developer.log('Easy mode: selected preferred point at ${selected.x}, ${selected.y}');
-      return selected;
-    } else {
-      Point selected = emptyPoints[Random().nextInt(emptyPoints.length)];
-      developer.log('Easy mode: selected random point at ${selected.x}, ${selected.y}');
+    if (edgePoints.isNotEmpty && Random().nextDouble() < 0.6) {
+      Point selected = edgePoints[Random().nextInt(edgePoints.length)];
+      developer.log('Easy mode: edge placement at ${selected.x}, ${selected.y}');
       return selected;
     }
+    
+    Point selected = emptyPoints[Random().nextInt(emptyPoints.length)];
+    developer.log('Easy mode: random placement at ${selected.x}, ${selected.y}');
+    return selected;
   }
 
   static Map<String, Point> _easyMovement(
@@ -132,18 +120,26 @@ class GoatAI {
     if (allMoves.isEmpty) {
       throw Exception("No valid moves for goats");
     }
-    
-    // Filter out moves that result in immediate capture
-    List<Map<String, Point>> safeMoves = [];
+
+    developer.log('Easy mode: ${allMoves.length} moves available');
+
+    // Simple random movement with slight preference for edges
+    List<Map<String, Point>> edgeMoves = [];
     for (Map<String, Point> move in allMoves) {
-      if (!_resultsInImmediateCapture(move, board, boardConfig, boardType)) {
-        safeMoves.add(move);
+      if (_isEdgePosition(move['to']!, board, boardConfig, boardType)) {
+        edgeMoves.add(move);
       }
     }
-    
-    // Use safe moves if available, otherwise use any move
-    List<Map<String, Point>> movesToChooseFrom = safeMoves.isNotEmpty ? safeMoves : allMoves;
-    return movesToChooseFrom[Random().nextInt(movesToChooseFrom.length)];
+
+    if (edgeMoves.isNotEmpty && Random().nextDouble() < 0.5) {
+      Map<String, Point> selected = edgeMoves[Random().nextInt(edgeMoves.length)];
+      developer.log('Easy mode: edge move from ${selected['from']!.x}, ${selected['from']!.y} to ${selected['to']!.x}, ${selected['to']!.y}');
+      return selected;
+    }
+
+    Map<String, Point> selected = allMoves[Random().nextInt(allMoves.length)];
+    developer.log('Easy mode: random move from ${selected['from']!.x}, ${selected['from']!.y} to ${selected['to']!.x}, ${selected['to']!.y}');
+    return selected;
   }
 
   // ===== MEDIUM MODE =====
@@ -163,25 +159,30 @@ class GoatAI {
     // Priority 1: Block immediate tiger threats
     Point? threatBlock = _findThreatBlockingPlacement(board, boardConfig, boardType, emptyPoints);
     if (threatBlock != null) {
-      developer.log('Medium mode: blocking threat at ${threatBlock.x}, ${threatBlock.y}');
+      developer.log('Medium mode: threat blocking at ${threatBlock.x}, ${threatBlock.y}');
       return threatBlock;
     }
 
-    // Priority 2: Place near tigers to limit mobility
-    Point? nearTigerPlacement = _findNearTigerPlacement(board, boardConfig, boardType, emptyPoints);
-    if (nearTigerPlacement != null) {
-      developer.log('Medium mode: placing near tiger at ${nearTigerPlacement.x}, ${nearTigerPlacement.y}');
-      return nearTigerPlacement;
+    // Priority 2: Place near tigers to limit their mobility
+    Point? nearTiger = _findNearTigerPlacement(board, boardConfig, boardType, emptyPoints);
+    if (nearTiger != null) {
+      developer.log('Medium mode: near tiger placement at ${nearTiger.x}, ${nearTiger.y}');
+      return nearTiger;
     }
 
-    // Priority 3: Place on edges (early game strategy)
-    if (placedGoats < 15) {
-      List<Point> edgePoints = emptyPoints.where((p) => _isEdgePosition(p, board, boardConfig, boardType)).toList();
-      if (edgePoints.isNotEmpty) {
-        Point selected = edgePoints[Random().nextInt(edgePoints.length)];
-        developer.log('Medium mode: placing on edge at ${selected.x}, ${selected.y}');
-        return selected;
-      }
+    // Priority 3: Form basic defensive formations
+    Point? defensiveFormation = _findDefensiveFormationPlacement(board, boardConfig, boardType, emptyPoints);
+    if (defensiveFormation != null) {
+      developer.log('Medium mode: defensive formation at ${defensiveFormation.x}, ${defensiveFormation.y}');
+      return defensiveFormation;
+    }
+
+    // Priority 4: Place on edges for safety
+    List<Point> edgePoints = emptyPoints.where((p) => _isEdgePosition(p, board, boardConfig, boardType)).toList();
+    if (edgePoints.isNotEmpty) {
+      Point selected = edgePoints[Random().nextInt(edgePoints.length)];
+      developer.log('Medium mode: edge placement at ${selected.x}, ${selected.y}');
+      return selected;
     }
 
     // Fallback: random placement
@@ -212,13 +213,22 @@ class GoatAI {
       // Priority 2: Try to keep goats clustered
       Map<String, Point>? clusteredMove = _findClusteredMove(safeMoves, board, boardConfig, boardType);
       if (clusteredMove != null) {
+        developer.log('Medium mode: clustered move');
         return clusteredMove;
       }
       
       // Priority 3: Move towards edges if possible
       Map<String, Point>? edgeMove = _findEdgeMove(safeMoves, board, boardConfig, boardType);
       if (edgeMove != null) {
+        developer.log('Medium mode: edge move');
         return edgeMove;
+      }
+      
+      // Priority 4: Block obvious tiger threats
+      Map<String, Point>? threatBlock = _findThreatBlockingMove(safeMoves, board, boardConfig, boardType);
+      if (threatBlock != null) {
+        developer.log('Medium mode: threat blocking move');
+        return threatBlock;
       }
       
       return safeMoves[Random().nextInt(safeMoves.length)];
@@ -243,35 +253,49 @@ class GoatAI {
 
     developer.log('Hard mode: ${emptyPoints.length} empty points available');
 
-    // Priority 1: Block potential tiger jumps
-    Point? jumpBlock = _findJumpBlockingPlacement(board, boardConfig, boardType, emptyPoints, unsafeMoveHistory);
+    // Priority 1: Block immediate tiger jumps (CRITICAL)
+    Point? jumpBlock = _findCriticalJumpBlock(board, boardConfig, boardType, emptyPoints);
     if (jumpBlock != null) {
-      developer.log('Hard mode: blocking jump at ${jumpBlock.x}, ${jumpBlock.y}');
+      developer.log('Hard mode: CRITICAL jump block at ${jumpBlock.x}, ${jumpBlock.y}');
       return jumpBlock;
     }
 
-    // Priority 2: Form strategic walls and gradually trap tigers
-    Point? strategicPlacement = _findStrategicPlacement(board, boardConfig, boardType, emptyPoints, placedGoats);
-    if (strategicPlacement != null) {
-      developer.log('Hard mode: strategic placement at ${strategicPlacement.x}, ${strategicPlacement.y}');
-      return strategicPlacement;
+    // Priority 2: Block potential tiger escape routes
+    Point? escapeBlock = _findEscapeRouteBlock(board, boardConfig, boardType, emptyPoints);
+    if (escapeBlock != null) {
+      developer.log('Hard mode: escape route block at ${escapeBlock.x}, ${escapeBlock.y}');
+      return escapeBlock;
     }
 
-    // Priority 3: Place on key intersections to restrict tiger freedom
+    // Priority 3: Form defensive walls around tigers
+    Point? wallFormation = _findWallFormationPlacement(board, boardConfig, boardType, emptyPoints, placedGoats);
+    if (wallFormation != null) {
+      developer.log('Hard mode: wall formation at ${wallFormation.x}, ${wallFormation.y}');
+      return wallFormation;
+    }
+
+    // Priority 4: Place on key intersections to restrict tiger movement
     Point? keyIntersection = _findKeyIntersectionPlacement(board, boardConfig, boardType, emptyPoints);
     if (keyIntersection != null) {
       developer.log('Hard mode: key intersection at ${keyIntersection.x}, ${keyIntersection.y}');
       return keyIntersection;
     }
 
-    // Priority 4: Early game edge placement
-    if (placedGoats < 12) {
-      List<Point> edgePoints = emptyPoints.where((p) => _isEdgePosition(p, board, boardConfig, boardType)).toList();
-      if (edgePoints.isNotEmpty) {
-        Point selected = _findBestEdgePlacement(edgePoints, board, boardConfig, boardType);
-        developer.log('Hard mode: best edge placement at ${selected.x}, ${selected.y}');
-        return selected;
+    // Priority 5: Early game - place near tigers to limit their mobility
+    if (placedGoats < 15) {
+      Point? nearTiger = _findNearTigerPlacement(board, boardConfig, boardType, emptyPoints);
+      if (nearTiger != null) {
+        developer.log('Hard mode: near tiger placement at ${nearTiger.x}, ${nearTiger.y}');
+        return nearTiger;
       }
+    }
+
+    // Priority 6: Place on edges to create boundaries
+    List<Point> edgePoints = emptyPoints.where((p) => _isEdgePosition(p, board, boardConfig, boardType)).toList();
+    if (edgePoints.isNotEmpty) {
+      Point selected = _findBestEdgePlacement(edgePoints, board, boardConfig, boardType);
+      developer.log('Hard mode: best edge placement at ${selected.x}, ${selected.y}');
+      return selected;
     }
 
     // Fallback: safest available position
@@ -290,25 +314,42 @@ class GoatAI {
       throw Exception("No valid moves for goats");
     }
 
-    // Priority 1: Block imminent tiger jumps
-    Map<String, Point>? jumpBlock = _findJumpBlockingMove(allMoves, board, boardConfig, boardType);
+    // Priority 1: Block imminent tiger jumps (CRITICAL)
+    Map<String, Point>? jumpBlock = _findCriticalJumpBlockMove(allMoves, board, boardConfig, boardType);
     if (jumpBlock != null) {
+      developer.log('Hard mode: CRITICAL jump block move');
       return jumpBlock;
     }
 
-    // Priority 2: Keep goats clustered and connected
-    Map<String, Point>? clusteredMove = _findClusteredMove(allMoves, board, boardConfig, boardType);
-    if (clusteredMove != null) {
-      return clusteredMove;
+    // Priority 2: Move to block tiger escape routes
+    Map<String, Point>? escapeBlock = _findEscapeBlockMove(allMoves, board, boardConfig, boardType);
+    if (escapeBlock != null) {
+      developer.log('Hard mode: escape block move');
+      return escapeBlock;
     }
 
-    // Priority 3: Move to key intersections
+    // Priority 3: Strengthen existing walls and formations
+    Map<String, Point>? wallStrengthen = _findWallStrengtheningMove(allMoves, board, boardConfig, boardType);
+    if (wallStrengthen != null) {
+      developer.log('Hard mode: wall strengthening move');
+      return wallStrengthen;
+    }
+
+    // Priority 4: Move to key intersections
     Map<String, Point>? keyMove = _findKeyIntersectionMove(allMoves, board, boardConfig, boardType);
     if (keyMove != null) {
+      developer.log('Hard mode: key intersection move');
       return keyMove;
     }
 
-    // Priority 4: Avoid dangerous moves
+    // Priority 5: Keep goats clustered and connected
+    Map<String, Point>? clusteredMove = _findClusteredMove(allMoves, board, boardConfig, boardType);
+    if (clusteredMove != null) {
+      developer.log('Hard mode: clustered move');
+      return clusteredMove;
+    }
+
+    // Priority 6: Avoid dangerous moves
     List<Map<String, Point>> safeMoves = [];
     for (Map<String, Point> move in allMoves) {
       if (!_resultsInImmediateCapture(move, board, boardConfig, boardType)) {
@@ -515,6 +556,24 @@ class GoatAI {
     return null;
   }
 
+  static Point? _findDefensiveFormationPlacement(
+    List<List<Point>> board,
+    BoardConfig? boardConfig,
+    BoardType boardType,
+    List<Point> emptyPoints,
+  ) {
+    try {
+      for (Point point in emptyPoints) {
+        if (_countAdjacentGoats(point, board, boardConfig, boardType) >= 1) {
+          return point;
+        }
+      }
+    } catch (e) {
+      developer.log('Error in _findDefensiveFormationPlacement: $e');
+    }
+    return null;
+  }
+
   static Map<String, Point>? _findClusteredMove(
     List<Map<String, Point>> moves,
     List<List<Point>> board,
@@ -563,28 +622,64 @@ class GoatAI {
     return null;
   }
 
-  // Hard mode helpers
-  static Point? _findJumpBlockingPlacement(
+  static Map<String, Point>? _findThreatBlockingMove(
+    List<Map<String, Point>> moves,
     List<List<Point>> board,
     BoardConfig? boardConfig,
     BoardType boardType,
-    List<Point> emptyPoints,
-    Set<String> unsafeMoveHistory,
   ) {
     try {
-      for (Point point in emptyPoints) {
-        if (_blocksTigerJump(point, board, boardConfig, boardType) && 
-            !unsafeMoveHistory.contains('${point.x},${point.y}')) {
-          return point;
+      for (Map<String, Point> move in moves) {
+        if (_blocksImmediateThreat(move['to']!, board, boardConfig, boardType)) {
+          return move;
         }
       }
     } catch (e) {
-      developer.log('Error in _findJumpBlockingPlacement: $e');
+      developer.log('Error in _findThreatBlockingMove: $e');
     }
     return null;
   }
 
-  static Point? _findStrategicPlacement(
+  // Hard mode helpers
+  static Point? _findCriticalJumpBlock(
+    List<List<Point>> board,
+    BoardConfig? boardConfig,
+    BoardType boardType,
+    List<Point> emptyPoints,
+  ) {
+    try {
+      for (Point point in emptyPoints) {
+        if (_blocksTigerJump(point, board, boardConfig, boardType) && 
+            !_isAdjacentToTiger(point, board, boardConfig, boardType)) {
+          return point;
+        }
+      }
+    } catch (e) {
+      developer.log('Error in _findCriticalJumpBlock: $e');
+    }
+    return null;
+  }
+
+  static Point? _findEscapeRouteBlock(
+    List<List<Point>> board,
+    BoardConfig? boardConfig,
+    BoardType boardType,
+    List<Point> emptyPoints,
+  ) {
+    try {
+      for (Point point in emptyPoints) {
+        if (_isAdjacentToTiger(point, board, boardConfig, boardType) && 
+            !_blocksTigerJump(point, board, boardConfig, boardType)) {
+          return point;
+        }
+      }
+    } catch (e) {
+      developer.log('Error in _findEscapeRouteBlock: $e');
+    }
+    return null;
+  }
+
+  static Point? _findWallFormationPlacement(
     List<List<Point>> board,
     BoardConfig? boardConfig,
     BoardType boardType,
@@ -598,7 +693,7 @@ class GoatAI {
         }
       }
     } catch (e) {
-      developer.log('Error in _findStrategicPlacement: $e');
+      developer.log('Error in _findWallFormationPlacement: $e');
     }
     return null;
   }
@@ -671,7 +766,7 @@ class GoatAI {
     }
   }
 
-  static Map<String, Point>? _findJumpBlockingMove(
+  static Map<String, Point>? _findCriticalJumpBlockMove(
     List<Map<String, Point>> moves,
     List<List<Point>> board,
     BoardConfig? boardConfig,
@@ -679,12 +774,50 @@ class GoatAI {
   ) {
     try {
       for (Map<String, Point> move in moves) {
-        if (_blocksTigerJumpMove(move, board, boardConfig, boardType)) {
+        if (_blocksTigerJumpMove(move, board, boardConfig, boardType) && 
+            !_isAdjacentToTigerMove(move, board, boardConfig, boardType)) {
           return move;
         }
       }
     } catch (e) {
-      developer.log('Error in _findJumpBlockingMove: $e');
+      developer.log('Error in _findCriticalJumpBlockMove: $e');
+    }
+    return null;
+  }
+
+  static Map<String, Point>? _findEscapeBlockMove(
+    List<Map<String, Point>> moves,
+    List<List<Point>> board,
+    BoardConfig? boardConfig,
+    BoardType boardType,
+  ) {
+    try {
+      for (Map<String, Point> move in moves) {
+        if (_isAdjacentToTigerMove(move, board, boardConfig, boardType) && 
+            !_blocksTigerJumpMove(move, board, boardConfig, boardType)) {
+          return move;
+        }
+      }
+    } catch (e) {
+      developer.log('Error in _findEscapeBlockMove: $e');
+    }
+    return null;
+  }
+
+  static Map<String, Point>? _findWallStrengtheningMove(
+    List<Map<String, Point>> moves,
+    List<List<Point>> board,
+    BoardConfig? boardConfig,
+    BoardType boardType,
+  ) {
+    try {
+      for (Map<String, Point> move in moves) {
+        if (_formsStrategicWallMove(move, board, boardConfig, boardType)) {
+          return move;
+        }
+      }
+    } catch (e) {
+      developer.log('Error in _findWallStrengtheningMove: $e');
     }
     return null;
   }
@@ -755,6 +888,15 @@ class GoatAI {
     }
   }
 
+  static bool _isAdjacentToTigerMove(Map<String, Point> move, List<List<Point>> board, BoardConfig? boardConfig, BoardType boardType) {
+    try {
+      return move['to']!.adjacentPoints.any((adj) => adj.type == PieceType.tiger);
+    } catch (e) {
+      developer.log('Error in _isAdjacentToTigerMove: $e');
+      return false;
+    }
+  }
+
   static int _countAdjacentGoats(Point point, List<List<Point>> board, BoardConfig? boardConfig, BoardType boardType) {
     try {
       return point.adjacentPoints.where((adj) => adj.type == PieceType.goat).length;
@@ -777,6 +919,19 @@ class GoatAI {
     }
   }
 
+  static bool _blocksTigerJumpMove(Map<String, Point> move, List<List<Point>> board, BoardConfig? boardConfig, BoardType boardType) {
+    try {
+      if (boardType == BoardType.square) {
+        return _blocksSquareJump(move['to']!, board);
+      } else {
+        return _blocksAaduPuliJump(move['to']!, boardConfig!);
+      }
+    } catch (e) {
+      developer.log('Error in _blocksTigerJumpMove: $e');
+      return false;
+    }
+  }
+
   static bool _formsStrategicWall(Point point, List<List<Point>> board, BoardConfig? boardConfig, BoardType boardType, int placedGoats) {
     try {
       if (boardType == BoardType.square) {
@@ -786,6 +941,19 @@ class GoatAI {
       }
     } catch (e) {
       developer.log('Error in _formsStrategicWall: $e');
+      return false;
+    }
+  }
+
+  static bool _formsStrategicWallMove(Map<String, Point> move, List<List<Point>> board, BoardConfig? boardConfig, BoardType boardType) {
+    try {
+      if (boardType == BoardType.square) {
+        return _formsSquareWall(move['to']!, board, 0); // Placeholder for placedGoats
+      } else {
+        return _formsAaduPuliWall(move['to']!, boardConfig!);
+      }
+    } catch (e) {
+      developer.log('Error in _formsStrategicWallMove: $e');
       return false;
     }
   }
@@ -803,6 +971,19 @@ class GoatAI {
     }
   }
 
+  static bool _isKeyIntersectionMove(Map<String, Point> move, List<List<Point>> board, BoardConfig? boardConfig, BoardType boardType) {
+    try {
+      if (boardType == BoardType.square) {
+        return _isSquareKeyIntersection(move['to']!, board);
+      } else {
+        return _isAaduPuliKeyIntersection(move['to']!, boardConfig!);
+      }
+    } catch (e) {
+      developer.log('Error in _isKeyIntersectionMove: $e');
+      return false;
+    }
+  }
+
   static double _calculateRisk(Point point, List<List<Point>> board, BoardConfig? boardConfig, BoardType boardType) {
     try {
       if (boardType == BoardType.square) {
@@ -816,47 +997,6 @@ class GoatAI {
     }
   }
 
-  static bool _blocksTigerJumpMove(Map<String, Point> move, List<List<Point>> board, BoardConfig? boardConfig, BoardType boardType) {
-    try {
-      if (boardType == BoardType.square) {
-        return _blocksSquareJumpMove(move, board);
-      } else {
-        return _blocksAaduPuliJumpMove(move, boardConfig!);
-      }
-    } catch (e) {
-      developer.log('Error in _blocksTigerJumpMove: $e');
-      return false;
-    }
-  }
-
-  static double _evaluateMoveHeuristic(Map<String, Point> move, List<List<Point>> board, BoardConfig? boardConfig, BoardType boardType) {
-    try {
-      if (boardType == BoardType.square) {
-        return _evaluateSquareHeuristic(move, board);
-      } else {
-        return _evaluateAaduPuliHeuristic(move, boardConfig!);
-      }
-    } catch (e) {
-      developer.log('Error in _evaluateMoveHeuristic: $e');
-      return 0.0;
-    }
-  }
-
-  static double _evaluatePlacementScore(Point point, List<List<Point>> board, BoardConfig? boardConfig, BoardType boardType) {
-    try {
-      if (boardType == BoardType.square) {
-        return _evaluateSquarePlacement(point, board);
-      } else {
-        return _evaluateAaduPuliPlacement(point, boardConfig!);
-      }
-    } catch (e) {
-      developer.log('Error in _evaluatePlacementScore: $e');
-      return 0.0;
-    }
-  }
-
-  // ===== BOARD-SPECIFIC IMPLEMENTATIONS =====
-  // Square board implementations
   static bool _blocksSquareThreat(Point point, List<List<Point>> board) {
     try {
       for (var row in board) {
@@ -904,6 +1044,173 @@ class GoatAI {
     return false;
   }
 
+  static bool _blocksSquareJumpMove(Map<String, Point> move, List<List<Point>> board) {
+    try {
+      Point to = move['to']!;
+      return _blocksSquareJump(to, board);
+    } catch (e) {
+      developer.log('Error in _blocksSquareJumpMove: $e');
+      return false;
+    }
+  }
+
+  static double _evaluateSquareHeuristic(Map<String, Point> move, List<List<Point>> board) {
+    try {
+      Point to = move['to']!;
+      double score = 0.0;
+      
+      // CRITICAL: Block tiger jumps
+      if (_blocksSquareJump(to, board)) {
+        score += 500.0;
+      }
+      
+      // Block tiger threats
+      if (_blocksSquareThreat(to, board)) {
+        score += 300.0;
+      }
+      
+      // Form walls and clusters
+      score += _countAdjacentGoats(to, board, null, BoardType.square) * 100.0;
+      
+      // Edge positions are safer
+      if (to.x == 0 || to.x == board.length - 1 || to.y == 0 || to.y == board[0].length - 1) {
+        score += 50.0;
+      }
+      
+      // Key intersections
+      if (_isSquareKeyIntersection(to, board)) {
+        score += 200.0;
+      }
+      
+      // Penalize risky positions
+      score -= _calculateSquareRisk(to, board) * 200.0;
+      
+      return score;
+    } catch (e) {
+      developer.log('Error in _evaluateSquareHeuristic: $e');
+      return 0.0;
+    }
+  }
+
+  static double _evaluateSquarePlacement(Point point, List<List<Point>> board) {
+    try {
+      double score = 0.0;
+      
+      // CRITICAL: Block tiger jumps
+      if (_blocksSquareJump(point, board)) {
+        score += 800.0;
+      }
+      
+      // Block tiger threats
+      if (_blocksSquareThreat(point, board)) {
+        score += 400.0;
+      }
+      
+      // Form walls and clusters
+      score += _countAdjacentGoats(point, board, null, BoardType.square) * 150.0;
+      
+      // Edge positions are safer
+      if (point.x == 0 || point.x == board.length - 1 || point.y == 0 || point.y == board[0].length - 1) {
+        score += 100.0;
+      }
+      
+      // Key intersections
+      if (_isSquareKeyIntersection(point, board)) {
+        score += 300.0;
+      }
+      
+      // Penalize risky positions
+      score -= _calculateSquareRisk(point, board) * 100.0;
+      
+      return score;
+    } catch (e) {
+      developer.log('Error in _evaluateSquarePlacement: $e');
+      return 0.0;
+    }
+  }
+
+  static double _evaluateAaduPuliHeuristic(Map<String, Point> move, BoardConfig boardConfig) {
+    try {
+      Point to = move['to']!;
+      double score = 0.0;
+      
+      // CRITICAL: Block tiger jumps
+      if (_blocksAaduPuliJump(to, boardConfig)) {
+        score += 500.0;
+      }
+      
+      // Block tiger threats
+      if (_blocksAaduPuliThreat(to, boardConfig)) {
+        score += 300.0;
+      }
+      
+      // Form walls and clusters
+      score += _countAdjacentGoats(to, [], boardConfig, BoardType.aaduPuli) * 100.0;
+      
+      // Key intersections
+      if (_isAaduPuliKeyIntersection(to, boardConfig)) {
+        score += 200.0;
+      }
+      
+      // Penalize risky positions
+      score -= _calculateAaduPuliRisk(to, boardConfig) * 2.0;
+      
+      return score;
+    } catch (e) {
+      developer.log('Error in _evaluateAaduPuliHeuristic: $e');
+      return 0.0;
+    }
+  }
+
+  static double _evaluateAaduPuliPlacement(Point point, BoardConfig boardConfig) {
+    try {
+      double score = 0.0;
+      
+      // CRITICAL: Block tiger jumps
+      if (_blocksAaduPuliJump(point, boardConfig)) {
+        score += 800.0;
+      }
+      
+      // Block tiger threats
+      if (_blocksAaduPuliThreat(point, boardConfig)) {
+        score += 400.0;
+      }
+      
+      // Form walls and clusters
+      score += _countAdjacentGoats(point, [], boardConfig, BoardType.aaduPuli) * 150.0;
+      
+      // Key intersections
+      if (_isAaduPuliKeyIntersection(point, boardConfig)) {
+        score += 300.0;
+      }
+      
+      // Penalize risky positions
+      score -= _calculateAaduPuliRisk(point, boardConfig) * 1.0;
+      
+      return score;
+    } catch (e) {
+      developer.log('Error in _evaluateAaduPuliPlacement: $e');
+      return 0.0;
+    }
+  }
+
+  static double _calculateSquareRisk(Point point, List<List<Point>> board) {
+    try {
+      double risk = 0.0;
+      for (var row in board) {
+        for (var tiger in row.where((p) => p.type == PieceType.tiger)) {
+          double distance = ((point.x - tiger.x) * (point.x - tiger.x) + 
+                            (point.y - tiger.y) * (point.y - tiger.y)).toDouble();
+          risk += 1.0 / (distance + 1.0);
+        }
+      }
+      return risk;
+    } catch (e) {
+      developer.log('Error in _calculateSquareRisk: $e');
+      return 0.0;
+    }
+  }
+
   static bool _formsSquareWall(Point point, List<List<Point>> board, int placedGoats) {
     try {
       if (placedGoats < 12) {
@@ -927,81 +1234,68 @@ class GoatAI {
     }
   }
 
-  static double _calculateSquareRisk(Point point, List<List<Point>> board) {
+  static double _calculateAaduPuliRisk(Point point, BoardConfig boardConfig) {
     try {
       double risk = 0.0;
-      for (var row in board) {
-        for (var tiger in row.where((p) => p.type == PieceType.tiger)) {
-          double distance = ((point.x - tiger.x) * (point.x - tiger.x) + 
-                            (point.y - tiger.y) * (point.y - tiger.y)).toDouble();
-          risk += 1.0 / (distance + 1.0);
+      for (var tiger in boardConfig.nodes.where((n) => n.type == PieceType.tiger)) {
+        if (tiger.adjacentPoints.contains(point)) {
+          risk += 100.0;
         }
       }
       return risk;
     } catch (e) {
-      developer.log('Error in _calculateSquareRisk: $e');
+      developer.log('Error in _calculateAaduPuliRisk: $e');
       return 0.0;
     }
   }
 
-  static bool _blocksSquareJumpMove(Map<String, Point> move, List<List<Point>> board) {
+  static bool _formsAaduPuliWall(Point point, BoardConfig boardConfig) {
     try {
-      Point to = move['to']!;
-      return _blocksSquareJump(to, board);
+      return point.adjacentPoints.where((adj) => adj.type == PieceType.goat).length >= 2;
     } catch (e) {
-      developer.log('Error in _blocksSquareJumpMove: $e');
+      developer.log('Error in _formsAaduPuliWall: $e');
       return false;
     }
   }
 
-  static double _evaluateSquareHeuristic(Map<String, Point> move, List<List<Point>> board) {
+  static bool _isAaduPuliKeyIntersection(Point point, BoardConfig boardConfig) {
     try {
-      Point to = move['to']!;
-      double score = 0.0;
-      
-      if (_blocksSquareJump(to, board)) {
-        score += 200.0;
-      }
-      
-      score += _countAdjacentGoats(to, board, null, BoardType.square) * 50.0;
-      
-      if (to.x == 0 || to.x == board.length - 1 || to.y == 0 || to.y == board[0].length - 1) {
-        score += 30.0;
-      }
-      
-      score -= _calculateSquareRisk(to, board) * 100.0;
-      
-      return score;
+      int adjacentEmpty = point.adjacentPoints.where((adj) => adj.type == PieceType.empty).length;
+      return adjacentEmpty <= 2;
     } catch (e) {
-      developer.log('Error in _evaluateSquareHeuristic: $e');
+      developer.log('Error in _isAaduPuliKeyIntersection: $e');
+      return false;
+    }
+  }
+
+  static double _evaluateMoveHeuristic(Map<String, Point> move, List<List<Point>> board, BoardConfig? boardConfig, BoardType boardType) {
+    try {
+      if (boardType == BoardType.square) {
+        return _evaluateSquareHeuristic(move, board);
+      } else {
+        return _evaluateAaduPuliHeuristic(move, boardConfig!);
+      }
+    } catch (e) {
+      developer.log('Error in _evaluateMoveHeuristic: $e');
       return 0.0;
     }
   }
 
-  static double _evaluateSquarePlacement(Point point, List<List<Point>> board) {
+  static double _evaluatePlacementScore(Point point, List<List<Point>> board, BoardConfig? boardConfig, BoardType boardType) {
     try {
-      double score = 0.0;
-      
-      if (_blocksSquareJump(point, board)) {
-        score += 300.0;
+      if (boardType == BoardType.square) {
+        return _evaluateSquarePlacement(point, board);
+      } else {
+        return _evaluateAaduPuliPlacement(point, boardConfig!);
       }
-      
-      score += _countAdjacentGoats(point, board, null, BoardType.square) * 100.0;
-      
-      if (point.x == 0 || point.x == board.length - 1 || point.y == 0 || point.y == board[0].length - 1) {
-        score += 50.0;
-      }
-      
-      score -= _calculateSquareRisk(point, board) * 50.0;
-      
-      return score;
     } catch (e) {
-      developer.log('Error in _evaluateSquarePlacement: $e');
+      developer.log('Error in _evaluatePlacementScore: $e');
       return 0.0;
     }
   }
 
-  // Aadu Puli board implementations
+  // ===== BOARD-SPECIFIC IMPLEMENTATIONS =====
+  // Square board implementations
   static bool _blocksAaduPuliThreat(Point point, BoardConfig boardConfig) {
     try {
       for (var tiger in boardConfig.nodes.where((n) => n.type == PieceType.tiger)) {
@@ -1038,40 +1332,6 @@ class GoatAI {
     return false;
   }
 
-  static bool _formsAaduPuliWall(Point point, BoardConfig boardConfig) {
-    try {
-      return point.adjacentPoints.where((adj) => adj.type == PieceType.goat).length >= 2;
-    } catch (e) {
-      developer.log('Error in _formsAaduPuliWall: $e');
-      return false;
-    }
-  }
-
-  static bool _isAaduPuliKeyIntersection(Point point, BoardConfig boardConfig) {
-    try {
-      int adjacentEmpty = point.adjacentPoints.where((adj) => adj.type == PieceType.empty).length;
-      return adjacentEmpty <= 2;
-    } catch (e) {
-      developer.log('Error in _isAaduPuliKeyIntersection: $e');
-      return false;
-    }
-  }
-
-  static double _calculateAaduPuliRisk(Point point, BoardConfig boardConfig) {
-    try {
-      double risk = 0.0;
-      for (var tiger in boardConfig.nodes.where((n) => n.type == PieceType.tiger)) {
-        if (tiger.adjacentPoints.contains(point)) {
-          risk += 100.0;
-        }
-      }
-      return risk;
-    } catch (e) {
-      developer.log('Error in _calculateAaduPuliRisk: $e');
-      return 0.0;
-    }
-  }
-
   static bool _blocksAaduPuliJumpMove(Map<String, Point> move, BoardConfig boardConfig) {
     try {
       Point to = move['to']!;
@@ -1079,45 +1339,6 @@ class GoatAI {
     } catch (e) {
       developer.log('Error in _blocksAaduPuliJumpMove: $e');
       return false;
-    }
-  }
-
-  static double _evaluateAaduPuliHeuristic(Map<String, Point> move, BoardConfig boardConfig) {
-    try {
-      Point to = move['to']!;
-      double score = 0.0;
-      
-      if (_blocksAaduPuliJump(to, boardConfig)) {
-        score += 200.0;
-      }
-      
-      score += _countAdjacentGoats(to, [], boardConfig, BoardType.aaduPuli) * 50.0;
-      
-      score -= _calculateAaduPuliRisk(to, boardConfig);
-      
-      return score;
-    } catch (e) {
-      developer.log('Error in _evaluateAaduPuliHeuristic: $e');
-      return 0.0;
-    }
-  }
-
-  static double _evaluateAaduPuliPlacement(Point point, BoardConfig boardConfig) {
-    try {
-      double score = 0.0;
-      
-      if (_blocksAaduPuliJump(point, boardConfig)) {
-        score += 300.0;
-      }
-      
-      score += _countAdjacentGoats(point, [], boardConfig, BoardType.aaduPuli) * 100.0;
-      
-      score -= _calculateAaduPuliRisk(point, boardConfig) * 0.5;
-      
-      return score;
-    } catch (e) {
-      developer.log('Error in _evaluateAaduPuliPlacement: $e');
-      return 0.0;
     }
   }
 }
