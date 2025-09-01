@@ -225,27 +225,80 @@ class GameController extends ChangeNotifier {
       // Use Goat AI for placement
       try {
         final placement = GoatAI.placeGoat(board, boardConfig, boardType, placedGoats, difficulty, unsafeMoveHistory);
+        debugPrint("[GoatAI] Placing goat at ${placement.x}, ${placement.y}");
         _placeGoat(placement);
       } catch (e) {
         debugPrint("Goat AI placement error: $e");
-        // Fallback to random placement
-        _goatPlacementAI();
+        // Fallback to simple random placement instead of old AI
+        _simpleRandomPlacement();
       }
     } else {
       // Use Goat AI for movement
       try {
         final move = GoatAI.moveGoat(board, boardConfig, boardType, difficulty);
+        debugPrint("[GoatAI] Moving goat from ${move['from']!.x}, ${move['from']!.y} to ${move['to']!.x}, ${move['to']!.y}");
         _executeMove(move['from']!, move['to']!);
         currentTurn = PieceType.tiger;
       } catch (e) {
         debugPrint("Goat AI movement error: $e");
-        // Fallback to existing AI
-        _goatMovementAI();
+        // Fallback to simple random movement instead of old AI
+        _simpleRandomMovement();
       }
     }
     selectedPiece = null;
     validMoves = [];
     notifyListeners();
+  }
+
+  void _simpleRandomPlacement() {
+    // Simple random placement as fallback
+    List<Point> emptyPoints = [];
+    if (boardType == BoardType.square) {
+      for (var row in board) {
+        for (var p in row) {
+          if (p.type == PieceType.empty) emptyPoints.add(p);
+        }
+      }
+    } else if (boardConfig != null) {
+      for (var p in boardConfig!.nodes) {
+        if (p.type == PieceType.empty) emptyPoints.add(p);
+      }
+    }
+
+    if (emptyPoints.isNotEmpty) {
+      Point randomPoint = emptyPoints[Random().nextInt(emptyPoints.length)];
+      debugPrint("[Fallback] Random placement at ${randomPoint.x}, ${randomPoint.y}");
+      _placeGoat(randomPoint);
+    }
+  }
+
+  void _simpleRandomMovement() {
+    // Simple random movement as fallback
+    List<Map<String, Point>> allMoves = [];
+    if (boardType == BoardType.square) {
+      for (var row in board) {
+        for (var goat in row.where((p) => p.type == PieceType.goat)) {
+          var validMoves = square.SquareBoardLogic.getValidMoves(goat, board);
+          for (var to in validMoves) {
+            if (to.type == PieceType.empty) allMoves.add({'from': goat, 'to': to});
+          }
+        }
+      }
+    } else if (boardConfig != null) {
+      for (var goat in boardConfig!.nodes.where((n) => n.type == PieceType.goat)) {
+        var valids = aadu.AaduPuliLogic.getValidMoves(goat, boardConfig!);
+        for (var to in valids) {
+          if (to.type == PieceType.empty) allMoves.add({'from': goat, 'to': to});
+        }
+      }
+    }
+
+    if (allMoves.isNotEmpty) {
+      Map<String, Point> randomMove = allMoves[Random().nextInt(allMoves.length)];
+      debugPrint("[Fallback] Random movement from ${randomMove['from']!.x}, ${randomMove['from']!.y} to ${randomMove['to']!.x}, ${randomMove['to']!.y}");
+      _executeMove(randomMove['from']!, randomMove['to']!);
+      currentTurn = PieceType.tiger;
+    }
   }
 
   void _goatPlacementAI() {
