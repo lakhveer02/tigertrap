@@ -48,7 +48,6 @@ class GameController extends ChangeNotifier {
   Set<String> unsafeMoveHistory = {};
 
   Set<String> moveHistory = {};
-  String? lastGoatMoveKey;
 
   GameController() {
     resetGame();
@@ -403,50 +402,13 @@ class GameController extends ChangeNotifier {
       // If there are no landing blocks, continue with other priorities
     }
 
-    // Hard mode priority 1.5: preempt future tiger jumps (after a single tiger step)
+    // Hard mode priority 2: on square board, cover outer walls before center (early phase)
     if (difficulty == Difficulty.hard && boardType == BoardType.square) {
-      final nextTurnLandingCandidates = _predictNextTurnLandingBlocksSquare();
-      if (nextTurnLandingCandidates.isNotEmpty) {
-        Point? bestFutureBlock;
-        double bestFutureScore = double.negativeInfinity;
-        for (final cand in nextTurnLandingCandidates) {
-          final bClone = _cloneSquareBoard(board);
-          final landC = bClone[cand.x][cand.y];
-          landC.type = PieceType.goat;
-          // Avoid placements where the new goat is immediately capturable
-          if (_tigerCanCaptureAfter(bClone, landC)) {
-            continue;
-          }
-          double score = 0.0;
-          // Prefer outer edges slightly less than direct blocks
-          score += _calculateOuterWallScore(cand) * 400;
-          // Prefer placements that reduce predicted next-turn jump threats
-          final int preThreatsBefore = _countNextTurnJumpThreatsOn(board);
-          final int preThreatsAfter = _countNextTurnJumpThreatsOn(bClone);
-          score += (preThreatsBefore - preThreatsAfter) * 600.0;
-          // Minor cluster/connectivity bonuses
-          score += _clusterBonus(bClone, landC) * 150;
-          final int initialMobility = _calculateTigerMobility(board);
-          final int reducedMobility = _calculateTigerMobility(bClone);
-          score += (reducedMobility < initialMobility) ? 200.0 : 0.0;
-          if (score > bestFutureScore) {
-            bestFutureScore = score;
-            bestFutureBlock = cand;
-          }
+      if (placedGoats <= 12) {
+        final wallEmpties = emptyPoints.where(_isEdgeSquare).toList();
+        if (wallEmpties.isNotEmpty) {
+          emptyPoints = wallEmpties;
         }
-        if (bestFutureBlock != null) {
-          debugPrint("[hard AI] Preemptively blocking future jump by placing at ${bestFutureBlock.x}, ${bestFutureBlock.y}");
-          _placeGoat(bestFutureBlock);
-          return;
-        }
-      }
-    }
-
-    // Hard mode priority 2: on square board, strictly cover outer walls before center until edges filled
-    if (difficulty == Difficulty.hard && boardType == BoardType.square) {
-      final wallEmpties = emptyPoints.where(_isEdgeSquare).toList();
-      if (wallEmpties.isNotEmpty) {
-        emptyPoints = wallEmpties;
       }
     }
 
@@ -483,6 +445,7 @@ class GameController extends ChangeNotifier {
     if (boardType == BoardType.square) {
       for (var point in emptyPoints) {
         if (unsafeMoveHistory.contains('${point.x},${point.y}')) continue;
+
         // Simulate on a cloned board; do not mutate the real board
         final boardClone = _cloneSquareBoard(board);
         final simulated = boardClone[point.x][point.y];
@@ -494,15 +457,15 @@ class GameController extends ChangeNotifier {
         }
 
         double score = 0;
-        // Stronger emphasis on edges until fully covered
-        score += _calculateOuterWallScore(point) * (placedGoats <= 12 ? 1200 : 400);
-        score += _calculateBlockScoreForBoard(boardClone, simulated) * 400;
-        score += _clusterBonus(boardClone, simulated) * 250;
+        // Emphasize edges early
+        score += _calculateOuterWallScore(point) * (placedGoats <= 12 ? 800 : 300);
+        score += _calculateBlockScoreForBoard(boardClone, simulated) * 300;
+        score += _clusterBonus(boardClone, simulated) * 200;
 
         // Mobility reduction compared to current board
         final int initialMobility = _calculateTigerMobility(board);
         final int reducedMobility = _calculateTigerMobility(boardClone);
-        score += (reducedMobility < initialMobility) ? 350.0 : 0.0;
+        score += (reducedMobility < initialMobility) ? 250.0 : 0.0;
 
         // Pessimistic tiger response from this simulated state
         double worstTigerScore = double.infinity;
@@ -518,7 +481,7 @@ class GameController extends ChangeNotifier {
             worstTigerScore = tigerScore < worstTigerScore ? tigerScore : worstTigerScore;
           }
         }
-        score -= worstTigerScore * 0.35;
+        score -= worstTigerScore * 0.25;
 
         if (score > bestScore) {
           bestScore = score;
@@ -757,11 +720,8 @@ class GameController extends ChangeNotifier {
     Map<String, Point>? bestMove;
     double bestScore = double.negativeInfinity;
 
-    // Anti-oscillation: avoid immediately reversing the last goat move if alternatives exist
-    final List<Map<String, Point>> candidateMoves = _filterAntiOscillation(allMoves);
-
     if (boardType == BoardType.square) {
-      for (final move in candidateMoves) {
+      for (final move in allMoves) {
         final boardClone = _cloneSquareBoard(board);
         final from = boardClone[move['from']!.x][move['from']!.y];
         final to = boardClone[move['to']!.x][move['to']!.y];
@@ -836,7 +796,7 @@ class GameController extends ChangeNotifier {
         }
       }
     } else if (boardConfig != null) {
-      for (final move in candidateMoves) {
+      for (final move in allMoves) {
         final cfgClone = _cloneAaduPuliConfig(boardConfig!);
         final fromC = cfgClone.nodes.firstWhere((n) => n.id == move['from']!.id);
         final toC = cfgClone.nodes.firstWhere((n) => n.id == move['to']!.id);
@@ -1098,10 +1058,6 @@ class GameController extends ChangeNotifier {
           : (goatPlayer == PlayerType.computer ? 'AI' : 'Human');
       final side = isTigerMove ? 'Tiger' : 'Goat';
       debugPrint('[confirm] $controller $side moved from ${from.x}, ${from.y} to ${to.x}, ${to.y}');
-    }
-    // Track last goat move to reduce oscillation in hard mode
-    if (moverType == PieceType.goat) {
-      lastGoatMoveKey = '${from.x},${from.y}->${to.x},${to.y}';
     }
     notifyListeners();
   }
@@ -1850,75 +1806,6 @@ class GameController extends ChangeNotifier {
     return blocked;
   }
 
-  // Return predicted landing squares where a tiger could perform a jump after a single legal step (no jump) this turn
-  List<Point> _predictNextTurnLandingBlocksSquare() {
-    final Set<String> seen = {};
-    final List<Point> result = [];
-    for (final tiger in board.expand((row) => row).where((p) => p.type == PieceType.tiger)) {
-      final moves = square.SquareBoardLogic.getValidMoves(tiger, board);
-      for (final dest in moves) {
-        // consider only non-jump tiger steps
-        if ((dest.x - tiger.x).abs() == 2 || (dest.y - tiger.y).abs() == 2) continue;
-        final tb = _cloneSquareBoard(board);
-        final tf = tb[tiger.x][tiger.y];
-        final tt = tb[dest.x][dest.y];
-        tf.type = PieceType.empty;
-        tt.type = PieceType.tiger;
-        final futureThreats = _getCurrentJumpThreatsOn(tb);
-        for (final thr in futureThreats) {
-          final lx = thr.landing.x;
-          final ly = thr.landing.y;
-          if (board[lx][ly].type != PieceType.empty) continue;
-          final key = '$lx,$ly';
-          if (seen.add(key)) {
-            result.add(board[lx][ly]);
-          }
-        }
-      }
-    }
-    return result;
-  }
-
-  // Count predicted next-turn jump threats for the square board
-  int _countNextTurnJumpThreatsOn(List<List<Point>> boardState) {
-    int total = 0;
-    for (final tiger in boardState.expand((row) => row).where((p) => p.type == PieceType.tiger)) {
-      final moves = square.SquareBoardLogic.getValidMoves(tiger, boardState);
-      for (final dest in moves) {
-        // only non-jump steps
-        if ((dest.x - tiger.x).abs() == 2 || (dest.y - tiger.y).abs() == 2) continue;
-        final tb = _cloneSquareBoard(boardState);
-        final tf = tb[tiger.x][tiger.y];
-        final tt = tb[dest.x][dest.y];
-        tf.type = PieceType.empty;
-        tt.type = PieceType.tiger;
-        total += _countJumpThreatsOn(tb);
-      }
-    }
-    return total;
-  }
-
-  // Build current jump threats for an arbitrary square board state
-  List<_JumpThreat> _getCurrentJumpThreatsOn(List<List<Point>> boardState) {
-    final threats = <_JumpThreat>[];
-    for (final tiger in boardState.expand((row) => row).where((p) => p.type == PieceType.tiger)) {
-      for (final adj in tiger.adjacentPoints) {
-        if (adj.type != PieceType.goat) continue;
-        final dx = adj.x - tiger.x;
-        final dy = adj.y - tiger.y;
-        final lx = adj.x + dx;
-        final ly = adj.y + dy;
-        if (lx >= 0 && lx < 5 && ly >= 0 && ly < 5) {
-          final landing = boardState[lx][ly];
-          if (landing.type == PieceType.empty && adj.adjacentPoints.contains(landing)) {
-            threats.add(_JumpThreat(tiger: tiger, victim: adj, landing: landing));
-          }
-        }
-      }
-    }
-    return threats;
-  }
-
   int _countUnsafeGoatsOn(List<List<Point>> boardState) {
     int count = 0;
     for (final goat in boardState.expand((row) => row).where((p) => p.type == PieceType.goat)) {
@@ -2045,25 +1932,6 @@ class GameController extends ChangeNotifier {
 
   bool _isEdgeSquare(Point p) {
     return p.x == 0 || p.x == 4 || p.y == 0 || p.y == 4;
-  }
-
-  List<Map<String, Point>> _filterAntiOscillation(List<Map<String, Point>> moves) {
-    if (lastGoatMoveKey == null || moves.length <= 1) return moves;
-    // Reverse of last move becomes from==last.to and to==last.from
-    final parts = lastGoatMoveKey!.split('->');
-    if (parts.length != 2) return moves;
-    final fromStr = parts[0];
-    final toStr = parts[1];
-    final fromParts = fromStr.split(',');
-    final toParts = toStr.split(',');
-    if (fromParts.length != 2 || toParts.length != 2) return moves;
-    final lastFromX = int.tryParse(fromParts[0]);
-    final lastFromY = int.tryParse(fromParts[1]);
-    final lastToX = int.tryParse(toParts[0]);
-    final lastToY = int.tryParse(toParts[1]);
-    if (lastFromX == null || lastFromY == null || lastToX == null || lastToY == null) return moves;
-    final filtered = moves.where((m) => !(m['from']!.x == lastToX && m['from']!.y == lastToY && m['to']!.x == lastFromX && m['to']!.y == lastFromY)).toList();
-    return filtered.isNotEmpty ? filtered : moves;
   }
 
   double _clusterBonusConfig(BoardConfig cfg, Point goatPosition) {
