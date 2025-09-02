@@ -837,34 +837,7 @@ class GameController extends ChangeNotifier {
 
   bool _areAdjacent(Point a, Point b) => a.adjacentPoints.contains(b);
 
-  bool _isGoatPositionSafe(Point position) {
-    if (boardType == BoardType.square) {
-      for (final tiger in board.expand((row) => row).where((p) => p.type == PieceType.tiger)) {
-        if ((position.x - tiger.x).abs() <= 1 && (position.y - tiger.y).abs() <= 1) {
-          int dx = position.x - tiger.x;
-          int dy = position.y - tiger.y;
-          int jumpX = position.x + dx;
-          int jumpY = position.y + dy;
 
-          if (jumpX >= 0 && jumpX < 5 && jumpY >= 0 && jumpY < 5) {
-            if (board[jumpX][jumpY].type == PieceType.empty) {
-              // Check if blocking the landing point is strategically beneficial
-              if (!_isStrategicBlock(position, Point(x: jumpX, y: jumpY))) {
-                return false;
-              }
-            }
-          }
-        }
-      }
-      return true;
-    } else {
-      return _isGoatPositionSafeForAaduPuli(position);
-    }
-  }
-
-  bool _isStrategicBlock(Point goatPosition, Point landingPoint) {
-    return _isStrategicBlockOn(board, goatPosition, landingPoint);
-  }
 
   bool _isStrategicBlockOn(
     List<List<Point>> boardState,
@@ -1593,47 +1566,6 @@ class GameController extends ChangeNotifier {
     return score;
   }
 
-  Map<String, Point> _chooseHardMove(List<Map<String, Point>> allMoves) {
-    double bestScore = double.negativeInfinity;
-    Map<String, Point>? bestMove;
-
-    for (final move in allMoves) {
-      var boardClone = _cloneSquareBoard(board);
-      var from = boardClone[move['from']!.x][move['from']!.y];
-      var to = boardClone[move['to']!.x][move['to']!.y];
-      from.type = PieceType.empty;
-      to.type = PieceType.goat;
-
-      List<Map<String, Point>> tigerMoves = [];
-      for (var row in boardClone) {
-        for (var tiger in row.where((p) => p.type == PieceType.tiger)) {
-          var validMoves = square.SquareBoardLogic.getValidMoves(tiger, boardClone);
-          for (var tigerMove in validMoves) {
-            tigerMoves.add({'from': tiger, 'to': tigerMove});
-          }
-        }
-      }
-
-      double worstTigerScore = double.infinity;
-      for (final tigerMove in tigerMoves) {
-        var tigerBoardClone = _cloneSquareBoard(boardClone);
-        var tigerFrom = tigerBoardClone[tigerMove['from']!.x][tigerMove['from']!.y];
-        var tigerTo = tigerBoardClone[tigerMove['to']!.x][tigerMove['to']!.y];
-        tigerFrom.type = PieceType.empty;
-        tigerTo.type = PieceType.tiger;
-
-        double score = _evaluateBoardStateForGoats(tigerBoardClone);
-        worstTigerScore = score < worstTigerScore ? score : worstTigerScore;
-      }
-
-      if (worstTigerScore > bestScore) {
-        bestScore = worstTigerScore;
-        bestMove = move;
-      }
-    }
-
-    return bestMove!;
-  }
 
   void cancelComputerMoveTimer() {
     _computerMoveTimer?.cancel();
@@ -1751,10 +1683,6 @@ class GameController extends ChangeNotifier {
   }
 
 
-  double _calculateBlockScore(Point goatPosition) {
-    // Delegate to board-aware version using the current board
-    return _calculateBlockScoreForBoard(board, goatPosition);
-  }
 
   double _calculateBlockScoreForBoard(List<List<Point>> boardState, Point goatPosition) {
     // Reward occupying landing cells of potential tiger jumps (which blocks captures)
