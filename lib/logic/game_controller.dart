@@ -451,7 +451,7 @@ class GameController extends ChangeNotifier {
 
     // Hard mode priority 2: on square board, cover outer walls before center (early phase)
     if (difficulty == Difficulty.hard && boardType == BoardType.square) {
-      if (placedGoats < 12) {
+      if (placedGoats <= 12) {
         final wallEmpties = emptyPoints.where(_isEdgeSquare).toList();
         if (wallEmpties.isNotEmpty) {
           emptyPoints = wallEmpties;
@@ -505,7 +505,7 @@ class GameController extends ChangeNotifier {
 
         double score = 0;
         // Emphasize edges early
-        score += _calculateOuterWallScore(point) * (placedGoats < 12 ? 800 : 300);
+        score += _calculateOuterWallScore(point) * (placedGoats <= 12 ? 800 : 300);
         score += _calculateBlockScoreForBoard(boardClone, simulated) * 300;
         score += _clusterBonus(boardClone, simulated) * 200;
 
@@ -1555,7 +1555,7 @@ class GameController extends ChangeNotifier {
 
     // Dynamic weights: early placement favors edges more; later favor connectivity
     final bool inPlacementPhase = !isGoatMovementPhase;
-    final bool earlyPlacement = inPlacementPhase && placedGoats < 12;
+    final bool earlyPlacement = inPlacementPhase && placedGoats <= 12;
     final double edgesWeight = earlyPlacement ? 20.0 : 6.0;
     final double connectivityWeight = inPlacementPhase && !earlyPlacement ? 10.0 : 8.0;
 
