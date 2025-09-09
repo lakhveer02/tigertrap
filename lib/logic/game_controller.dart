@@ -999,6 +999,14 @@ class GameController extends ChangeNotifier {
             double.negativeInfinity,
             double.infinity,
           );
+        case Difficulty.unbeatable:
+          return _minimaxMove(
+            moves,
+            3,
+            true,
+            double.negativeInfinity,
+            double.infinity,
+          );
       }
     }
     return moves[_randomInt(moves.length)];
