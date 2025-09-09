@@ -38,6 +38,8 @@ class GoatAI {
           return _mediumPlacement(board, boardConfig, boardType, placedGoats);
         case Difficulty.hard:
           return _hardPlacement(board, boardConfig, boardType, placedGoats, unsafeMoveHistory);
+        case Difficulty.unbeatable:
+          return _unbeatablePlacement(board, boardConfig, boardType, placedGoats, unsafeMoveHistory);
       }
     } catch (e) {
       developer.log('GoatAI.placeGoat error: $e');
@@ -71,6 +73,8 @@ class GoatAI {
           return _mediumMovement(board, boardConfig, boardType);
         case Difficulty.hard:
           return _hardMovement(board, boardConfig, boardType);
+        case Difficulty.unbeatable:
+          return _unbeatableMovement(board, boardConfig, boardType);
       }
     } catch (e) {
       developer.log('GoatAI.moveGoat error: $e');
@@ -302,6 +306,420 @@ class GoatAI {
     Point selected = _findSafestPlacement(emptyPoints, board, boardConfig, boardType);
     developer.log('Hard mode: safest placement at ${selected.x}, ${selected.y}');
     return selected;
+  }
+
+  // ===== UNBEATABLE MODE (HARD++) =====
+  static Point _unbeatablePlacement(
+    List<List<Point>> board,
+    BoardConfig? boardConfig,
+    BoardType boardType,
+    int placedGoats,
+    Set<String> unsafeMoveHistory,
+  ) {
+    List<Point> emptyPoints = _getEmptyPoints(board, boardConfig, boardType);
+    if (emptyPoints.isEmpty) {
+      throw Exception("No empty points available for goat placement");
+    }
+
+    // 1) Pre-block any immediate capture landings (must be safe by deep check)
+    if (boardType == BoardType.square) {
+      for (final tiger in board.expand((r) => r).where((p) => p.type == PieceType.tiger)) {
+        for (final adj in tiger.adjacentPoints.where((p) => p.type == PieceType.goat)) {
+          final dx = adj.x - tiger.x;
+          final dy = adj.y - tiger.y;
+          final lx = adj.x + dx;
+          final ly = adj.y + dy;
+          if (lx >= 0 && lx < board.length && ly >= 0 && ly < board[0].length) {
+            final landing = board[lx][ly];
+            if (landing.type == PieceType.empty && adj.adjacentPoints.contains(landing)) {
+              if (_isDeepSafeAfterPlacing(landing, board, boardConfig, boardType, 2)) {
+                return landing;
+              }
+            }
+          }
+        }
+      }
+    } else if (boardConfig != null) {
+      for (final tiger in boardConfig!.nodes.where((n) => n.type == PieceType.tiger)) {
+        for (final goat in tiger.adjacentPoints.where((p) => p.type == PieceType.goat)) {
+          for (final landing in goat.adjacentPoints) {
+            if (landing == tiger || landing.type != PieceType.empty) continue;
+            final key = '${tiger.id},${goat.id},${landing.id}';
+            if (aadu.AaduPuliLogic.isJumpTriple(key)) {
+              if (_isDeepSafeAfterPlacing(landing, board, boardConfig, boardType, 2)) {
+                return landing;
+              }
+            }
+          }
+        }
+      }
+    }
+
+    // 2) Central dominance early (must be deep-safe)
+    if (boardType == BoardType.square && placedGoats < 6) {
+      final center = board[2][2];
+      if (center.type == PieceType.empty && _isDeepSafeAfterPlacing(center, board, boardConfig, boardType, 2)) {
+        return center;
+      }
+    }
+
+    // 3) Evaluate all deep-safe placements with unbeatable evaluation
+    Point? best;
+    double bestScore = double.negativeInfinity;
+    for (final p in emptyPoints) {
+      // Never place adjacent to tiger unless deep-safe
+      if (_isAdjacentToTiger(p, board, boardConfig, boardType) && !_isDeepSafeAfterPlacing(p, board, boardConfig, boardType, 2)) {
+        continue;
+      }
+      if (!_isDeepSafeAfterPlacing(p, board, boardConfig, boardType, 2)) {
+        continue;
+      }
+      final score = _evaluateUnbeatablePlacement(p, board, boardConfig, boardType);
+      if (score > bestScore) {
+        bestScore = score;
+        best = p;
+      }
+    }
+
+    if (best != null) return best;
+
+    // 4) If nothing deep-safe, fallback to hard mode safest placement
+    return _hardPlacement(board, boardConfig, boardType, placedGoats, unsafeMoveHistory);
+  }
+
+  static Map<String, Point> _unbeatableMovement(
+    List<List<Point>> board,
+    BoardConfig? boardConfig,
+    BoardType boardType,
+  ) {
+    final allMoves = _getAllGoatMoves(board, boardConfig, boardType);
+    if (allMoves.isEmpty) {
+      throw Exception("No valid moves for goats");
+    }
+
+    // 1) Pre-block any imminent capture either by evacuating victim or occupying landing (deep-safe only)
+    final critical = _findCriticalJumpBlockMove(allMoves, board, boardConfig, boardType);
+    if (critical != null && _isDeepSafeAfterMoving(critical, board, boardConfig, boardType, 2)) {
+      return critical;
+    }
+
+    // 2) Choose among deep-safe moves using unbeatable evaluation
+    Map<String, Point>? bestMove;
+    double bestScore = double.negativeInfinity;
+    for (final move in allMoves) {
+      if (!_isDeepSafeAfterMoving(move, board, boardConfig, boardType, 2)) continue;
+      final score = _evaluateUnbeatableMove(move, board, boardConfig, boardType);
+      if (score > bestScore) {
+        bestScore = score;
+        bestMove = move;
+      }
+    }
+
+    if (bestMove != null) return bestMove;
+
+    // 3) Fallback to hard move if nothing passes deep safety
+    return _hardMovement(board, boardConfig, boardType);
+  }
+
+  // ===== Unbeatable evaluation =====
+  static double _evaluateUnbeatablePlacement(
+    Point point,
+    List<List<Point>> board,
+    BoardConfig? boardConfig,
+    BoardType boardType,
+  ) {
+    if (boardType == BoardType.square) {
+      // Simulate placement
+      final clone = _cloneSquare(board);
+      final c = clone[point.x][point.y];
+      c.type = PieceType.goat;
+      final blockedTigers = clone
+          .expand((r) => r)
+          .where((p) => p.type == PieceType.tiger)
+          .where((t) => square.SquareBoardLogic.getValidMoves(t, clone).isEmpty)
+          .length;
+      final goatsAlive = clone.expand((r) => r).where((p) => p.type == PieceType.goat).length;
+      final tigersInCorner = [clone[0][0], clone[0][4], clone[4][0], clone[4][4]]
+          .where((p) => p.type == PieceType.tiger)
+          .length;
+      final anyGoatInDanger = _anyImmediateCaptureAvailable(clone, null, BoardType.square) ? 1 : 0;
+      double score = blockedTigers * 100 + goatsAlive * 50 + tigersInCorner * 70;
+      score -= anyGoatInDanger * 9999;
+      return score;
+    } else if (boardConfig != null) {
+      final cfg = _cloneConfig(boardConfig!);
+      final c = cfg.nodes.firstWhere((n) => n.id == point.id);
+      c.type = PieceType.goat;
+      final blockedTigers = cfg.nodes
+          .where((p) => p.type == PieceType.tiger)
+          .where((t) => aadu.AaduPuliLogic.getValidMoves(t, cfg).isEmpty)
+          .length;
+      final goatsAlive = cfg.nodes.where((p) => p.type == PieceType.goat).length;
+      final tigersInCorner = 0; // Not defined on this board; skip
+      final anyGoatInDanger = _anyImmediateCaptureAvailable([], cfg, BoardType.aaduPuli) ? 1 : 0;
+      double score = blockedTigers * 100 + goatsAlive * 50 + tigersInCorner * 70;
+      score -= anyGoatInDanger * 9999;
+      return score;
+    }
+    return 0.0;
+  }
+
+  static double _evaluateUnbeatableMove(
+    Map<String, Point> move,
+    List<List<Point>> board,
+    BoardConfig? boardConfig,
+    BoardType boardType,
+  ) {
+    if (boardType == BoardType.square) {
+      final clone = _cloneSquare(board);
+      final from = clone[move['from']!.x][move['from']!.y];
+      final to = clone[move['to']!.x][move['to']!.y];
+      from.type = PieceType.empty;
+      to.type = PieceType.goat;
+      final blockedTigers = clone
+          .expand((r) => r)
+          .where((p) => p.type == PieceType.tiger)
+          .where((t) => square.SquareBoardLogic.getValidMoves(t, clone).isEmpty)
+          .length;
+      final goatsAlive = clone.expand((r) => r).where((p) => p.type == PieceType.goat).length;
+      final tigersInCorner = [clone[0][0], clone[0][4], clone[4][0], clone[4][4]]
+          .where((p) => p.type == PieceType.tiger)
+          .length;
+      final anyGoatInDanger = _anyImmediateCaptureAvailable(clone, null, BoardType.square) ? 1 : 0;
+      double score = blockedTigers * 100 + goatsAlive * 50 + tigersInCorner * 70;
+      score -= anyGoatInDanger * 9999;
+      return score;
+    } else if (boardConfig != null) {
+      final cfg = _cloneConfig(boardConfig!);
+      final from = cfg.nodes.firstWhere((n) => n.id == move['from']!.id);
+      final to = cfg.nodes.firstWhere((n) => n.id == move['to']!.id);
+      from.type = PieceType.empty;
+      to.type = PieceType.goat;
+      final blockedTigers = cfg.nodes
+          .where((p) => p.type == PieceType.tiger)
+          .where((t) => aadu.AaduPuliLogic.getValidMoves(t, cfg).isEmpty)
+          .length;
+      final goatsAlive = cfg.nodes.where((p) => p.type == PieceType.goat).length;
+      final tigersInCorner = 0;
+      final anyGoatInDanger = _anyImmediateCaptureAvailable([], cfg, BoardType.aaduPuli) ? 1 : 0;
+      double score = blockedTigers * 100 + goatsAlive * 50 + tigersInCorner * 70;
+      score -= anyGoatInDanger * 9999;
+      return score;
+    }
+    return 0.0;
+  }
+
+  // ===== Deep safety checks (2-ply) =====
+  static bool _isDeepSafeAfterPlacing(
+    Point place,
+    List<List<Point>> board,
+    BoardConfig? boardConfig,
+    BoardType boardType,
+    int depth,
+  ) {
+    if (boardType == BoardType.square) {
+      final clone = _cloneSquare(board);
+      final c = clone[place.x][place.y];
+      c.type = PieceType.goat;
+      return _isDeepSafePositionSquare(clone, depth);
+    } else if (boardConfig != null) {
+      final cfg = _cloneConfig(boardConfig!);
+      final c = cfg.nodes.firstWhere((n) => n.id == place.id);
+      c.type = PieceType.goat;
+      return _isDeepSafePositionAaduPuli(cfg, depth);
+    }
+    return true;
+  }
+
+  static bool _isDeepSafeAfterMoving(
+    Map<String, Point> move,
+    List<List<Point>> board,
+    BoardConfig? boardConfig,
+    BoardType boardType,
+    int depth,
+  ) {
+    if (boardType == BoardType.square) {
+      final clone = _cloneSquare(board);
+      final from = clone[move['from']!.x][move['from']!.y];
+      final to = clone[move['to']!.x][move['to']!.y];
+      from.type = PieceType.empty;
+      to.type = PieceType.goat;
+      return _isDeepSafePositionSquare(clone, depth);
+    } else if (boardConfig != null) {
+      final cfg = _cloneConfig(boardConfig!);
+      final from = cfg.nodes.firstWhere((n) => n.id == move['from']!.id);
+      final to = cfg.nodes.firstWhere((n) => n.id == move['to']!.id);
+      from.type = PieceType.empty;
+      to.type = PieceType.goat;
+      return _isDeepSafePositionAaduPuli(cfg, depth);
+    }
+    return true;
+  }
+
+  static bool _isDeepSafePositionSquare(List<List<Point>> boardState, int depth) {
+    // Reject if tiger has an immediate capture now
+    if (_anyImmediateCaptureAvailable(boardState, null, BoardType.square)) return false;
+    if (depth <= 1) return true;
+    // For each tiger reply, ensure goats have a response that leaves no immediate capture
+    final tigerMoves = <Map<String, Point>>[];
+    for (final t in boardState.expand((r) => r).where((p) => p.type == PieceType.tiger)) {
+      for (final to in square.SquareBoardLogic.getValidMoves(t, boardState)) {
+        tigerMoves.add({'from': t, 'to': to});
+      }
+    }
+    for (final tMove of tigerMoves) {
+      // If tiger can capture immediately, unsafe
+      final from = tMove['from']!;
+      final to = tMove['to']!;
+      final isCapture = (to.x - from.x).abs() == 2 || (to.y - from.y).abs() == 2;
+      if (isCapture) return false;
+      final tb = _cloneSquare(boardState);
+      final tf = tb[from.x][from.y];
+      final tt = tb[to.x][to.y];
+      tf.type = PieceType.empty;
+      tt.type = PieceType.tiger;
+      // Generate goat replies
+      final goatMoves = <Map<String, Point>>[];
+      for (final g in tb.expand((r) => r).where((p) => p.type == PieceType.goat)) {
+        for (final dest in square.SquareBoardLogic.getValidMoves(g, tb)) {
+          if (dest.type == PieceType.empty) goatMoves.add({'from': g, 'to': dest});
+        }
+      }
+      bool hasSafeReply = false;
+      for (final gMove in goatMoves) {
+        final gb = _cloneSquare(tb);
+        final gf = gb[gMove['from']!.x][gMove['from']!.y];
+        final gt = gb[gMove['to']!.x][gMove['to']!.y];
+        gf.type = PieceType.empty;
+        gt.type = PieceType.goat;
+        if (!_anyImmediateCaptureAvailable(gb, null, BoardType.square)) {
+          hasSafeReply = true;
+          break;
+        }
+      }
+      if (!hasSafeReply) return false;
+    }
+    return true;
+  }
+
+  static bool _isDeepSafePositionAaduPuli(BoardConfig cfg, int depth) {
+    if (_anyImmediateCaptureAvailable([], cfg, BoardType.aaduPuli)) return false;
+    if (depth <= 1) return true;
+    final tigerMoves = <Map<String, Point>>[];
+    for (final t in cfg.nodes.where((n) => n.type == PieceType.tiger)) {
+      for (final to in aadu.AaduPuliLogic.getValidMoves(t, cfg)) {
+        tigerMoves.add({'from': t, 'to': to});
+      }
+    }
+    for (final tMove in tigerMoves) {
+      // If capture available now, unsafe
+      if (_isAaduPuliTigerCaptureMove(tMove, cfg)) return false;
+      final tb = _cloneConfig(cfg);
+      final tf = tb.nodes.firstWhere((n) => n.id == tMove['from']!.id);
+      final tt = tb.nodes.firstWhere((n) => n.id == tMove['to']!.id);
+      tf.type = PieceType.empty;
+      tt.type = PieceType.tiger;
+      // Goat replies
+      final goatMoves = <Map<String, Point>>[];
+      for (final g in tb.nodes.where((n) => n.type == PieceType.goat)) {
+        for (final dest in aadu.AaduPuliLogic.getValidMoves(g, tb)) {
+          if (dest.type == PieceType.empty) goatMoves.add({'from': g, 'to': dest});
+        }
+      }
+      bool hasSafeReply = false;
+      for (final gMove in goatMoves) {
+        final gb = _cloneConfig(tb);
+        final gf = gb.nodes.firstWhere((n) => n.id == gMove['from']!.id);
+        final gt = gb.nodes.firstWhere((n) => n.id == gMove['to']!.id);
+        gf.type = PieceType.empty;
+        gt.type = PieceType.goat;
+        if (!_anyImmediateCaptureAvailable([], gb, BoardType.aaduPuli)) {
+          hasSafeReply = true;
+          break;
+        }
+      }
+      if (!hasSafeReply) return false;
+    }
+    return true;
+  }
+
+  static bool _anyImmediateCaptureAvailable(
+    List<List<Point>> board,
+    BoardConfig? cfg,
+    BoardType boardType,
+  ) {
+    if (boardType == BoardType.square) {
+      for (final t in board.expand((r) => r).where((p) => p.type == PieceType.tiger)) {
+        for (final to in square.SquareBoardLogic.getValidMoves(t, board)) {
+          if ((to.x - t.x).abs() == 2 || (to.y - t.y).abs() == 2) return true;
+        }
+      }
+      return false;
+    } else if (cfg != null) {
+      for (final t in cfg.nodes.where((n) => n.type == PieceType.tiger)) {
+        for (final g in t.adjacentPoints.where((p) => p.type == PieceType.goat)) {
+          for (final landing in g.adjacentPoints) {
+            if (landing == t || landing.type != PieceType.empty) continue;
+            final key = '${t.id},${g.id},${landing.id}';
+            if (aadu.AaduPuliLogic.isJumpTriple(key)) return true;
+          }
+        }
+      }
+      return false;
+    }
+    return false;
+  }
+
+  static bool _isAaduPuliTigerCaptureMove(Map<String, Point> move, BoardConfig cfg) {
+    final from = move['from']!;
+    final to = move['to']!;
+    for (final g in from.adjacentPoints.where((p) => p.type == PieceType.goat)) {
+      for (final landing in g.adjacentPoints) {
+        if (landing == from || landing.type != PieceType.empty) continue;
+        final key = '${from.id},${g.id},${landing.id}';
+        if (aadu.AaduPuliLogic.isJumpTriple(key) && landing.id == to.id) return true;
+      }
+    }
+    return false;
+  }
+
+  // Cloning helpers for unbeatable evaluation
+  static List<List<Point>> _cloneSquare(List<List<Point>> original) {
+    final points = List.generate(
+      original.length,
+      (x) => List.generate(original[0].length, (y) {
+        final p = original[x][y];
+        return Point(x: p.x, y: p.y, type: p.type, adjacentPoints: []);
+      }),
+    );
+    for (var x = 0; x < original.length; x++) {
+      for (var y = 0; y < original[0].length; y++) {
+        final p = points[x][y];
+        final orig = original[x][y];
+        p.adjacentPoints = orig.adjacentPoints.map((adj) => points[adj.x][adj.y]).toList();
+      }
+    }
+    return points;
+  }
+
+  static BoardConfig _cloneConfig(BoardConfig original) {
+    final nodes = original.nodes
+        .map((p) => Point(
+              x: p.x,
+              y: p.y,
+              type: p.type,
+              id: p.id,
+              position: p.position,
+              adjacentPoints: [],
+            ))
+        .toList();
+    for (int i = 0; i < nodes.length; i++) {
+      nodes[i].adjacentPoints = original.nodes[i].adjacentPoints.map((adj) {
+        final idx = original.nodes.indexOf(adj);
+        return nodes[idx];
+      }).toList();
+    }
+    return BoardConfig(nodes: nodes, connections: original.connections);
   }
 
   static Map<String, Point> _hardMovement(

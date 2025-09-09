@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 enum BoardType { square, aaduPuli }
-enum Difficulty { easy, medium, hard }
+enum Difficulty { easy, medium, hard, unbeatable }
 
 class AppColors {
   static const Color deepSpace = Color(0xFF1A1D24);
