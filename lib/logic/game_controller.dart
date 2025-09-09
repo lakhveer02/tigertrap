@@ -163,7 +163,7 @@ class GameController extends ChangeNotifier {
     final moves = <Map<String, Point>>[];
     for (var row in board) {
       for (var piece in row.where((p) => p.type == currentTurn)) {
-        final valid = _getValidMovesWithGoatGod(piece, board);
+        final valid = square.SquareBoardLogic.getValidMoves(piece, board);
         for (var to in valid) {
           moves.add({'from': piece, 'to': to});
         }
@@ -196,7 +196,7 @@ class GameController extends ChangeNotifier {
     for (final piece in boardConfig!.nodes.where(
       (n) => n.type == currentTurn,
     )) {
-      final valid = _getValidMovesWithGoatGod(piece, boardConfig: boardConfig);
+      final valid = aadu.AaduPuliLogic.getValidMoves(piece, boardConfig!);
       for (final to in valid) {
         moves.add({'from': piece, 'to': to});
       }
@@ -1203,41 +1203,11 @@ class GameController extends ChangeNotifier {
 
   List<Point> _getValidMoves(Point piece) {
     if (boardType == BoardType.square) {
-      return _getValidMovesWithGoatGod(piece, board);
+      return square.SquareBoardLogic.getValidMoves(piece, board);
     } else if (boardConfig != null) {
-      return _getValidMovesWithGoatGod(piece, boardConfig: boardConfig);
+      return aadu.AaduPuliLogic.getValidMoves(piece, boardConfig!);
     }
     return [];
-  }
-
-  bool _isGoatGodModeActive() {
-    return gameMode == GameMode.pvc && goatPlayer == PlayerType.computer && difficulty == Difficulty.unbeatable;
-  }
-
-  List<Point> _getValidMovesWithGoatGod(
-    Point piece, [
-    List<List<Point>>? boardState,
-    {BoardConfig? boardConfig},
-  ]) {
-    // Default to standard rules
-    late final List<Point> base;
-    if (boardType == BoardType.square) {
-      base = square.SquareBoardLogic.getValidMoves(piece, boardState ?? board);
-    } else {
-      base = aadu.AaduPuliLogic.getValidMoves(piece, boardConfig ?? this.boardConfig!);
-    }
-
-    // Goat God Mode: forbid tiger capture moves entirely
-    if (_isGoatGodModeActive() && piece.type == PieceType.tiger) {
-      debugPrint('[goat-god] Filtering tiger capture moves for piece at ${piece.x}, ${piece.y}');
-      if (boardType == BoardType.square) {
-        return base.where((to) => (to.x - piece.x).abs() < 2 && (to.y - piece.y).abs() < 2).toList();
-      } else {
-        // On graph board, capture is a non-adjacent move; keep only adjacent
-        return base.where((to) => piece.adjacentPoints.contains(to)).toList();
-      }
-    }
-    return base;
   }
 
   void _executeMove(Point from, Point to) {
@@ -1311,8 +1281,7 @@ class GameController extends ChangeNotifier {
     bool win = false;
     String? message;
     if (boardType == BoardType.square) {
-      // In Goat God Mode, tigers cannot win by captures; only goats can win
-      if (!_isGoatGodModeActive() && square.SquareBoardLogic.checkTigerWin(capturedGoats)) {
+      if (square.SquareBoardLogic.checkTigerWin(capturedGoats)) {
         win = true;
         message = 'Tigers Win!';
       } else if (square.SquareBoardLogic.checkGoatWin(board)) {
@@ -1325,7 +1294,7 @@ class GameController extends ChangeNotifier {
         return;
       }
     } else {
-      if (!_isGoatGodModeActive() && aadu.AaduPuliLogic.checkTigerWin(capturedGoats)) {
+      if (aadu.AaduPuliLogic.checkTigerWin(capturedGoats)) {
         win = true;
         message = 'Tigers Win!';
       } else if (aadu.AaduPuliLogic.checkGoatWin(boardConfig!)) {
@@ -1762,8 +1731,7 @@ class GameController extends ChangeNotifier {
 
   bool _areAllTigersBlocked() {
     for (var tiger in board.expand((row) => row).where((p) => p.type == PieceType.tiger)) {
-      // Use Goat God filtered moves so a tiger with only capture moves counts as blocked
-      if (_getValidMovesWithGoatGod(tiger, board).isNotEmpty) {
+      if (square.SquareBoardLogic.getValidMoves(tiger, board).isNotEmpty) {
         return false;
       }
     }
@@ -1772,10 +1740,7 @@ class GameController extends ChangeNotifier {
 
   bool _areAllTigersBlockedOn(List<List<Point>> boardState) {
     for (var tiger in boardState.expand((row) => row).where((p) => p.type == PieceType.tiger)) {
-      final moves = _isGoatGodModeActive()
-          ? _getValidMovesWithGoatGod(tiger, boardState)
-          : square.SquareBoardLogic.getValidMoves(tiger, boardState);
-      if (moves.isNotEmpty) return false;
+      if (square.SquareBoardLogic.getValidMoves(tiger, boardState).isNotEmpty) return false;
     }
     return true;
   }
