@@ -966,50 +966,184 @@ class GameController extends ChangeNotifier {
   ) {
     final isTiger = currentTurn == PieceType.tiger;
     if (isTiger) {
-      switch (difficulty) {
-        case Difficulty.easy:
-          final captures =
-              moves.where((m) => _isJump(m['from']!, m['to']!)).toList();
-          if (captures.isNotEmpty) return (captures..shuffle()).first;
-          return (moves..shuffle()).first;
-        case Difficulty.medium:
-          final captures =
-              moves.where((m) => _isJump(m['from']!, m['to']!)).toList();
-          if (captures.isNotEmpty) return (captures..shuffle()).first;
-          final threateningMoves =
-              moves
-                  .where(
-                    (m) => m['to']!.adjacentPoints.any(
-                      (adj) =>
-                          adj.type == PieceType.goat &&
-                          adj.adjacentPoints.any(
-                            (adjAdj) => adjAdj.type == PieceType.empty,
-                          ),
-                    ),
-                  )
-                  .toList();
-          if (threateningMoves.isNotEmpty)
-            return (threateningMoves..shuffle()).first;
-          return (moves..shuffle()).first;
-        case Difficulty.hard:
-          return _minimaxMove(
-            moves,
-            2,
-            true,
-            double.negativeInfinity,
-            double.infinity,
-          );
-        case Difficulty.unbeatable:
-          return _minimaxMove(
-            moves,
-            3,
-            true,
-            double.negativeInfinity,
-            double.infinity,
-          );
-      }
+      return _selectTigerMoveByDifficulty(moves);
     }
     return moves[_randomInt(moves.length)];
+  }
+
+  Map<String, Point> _selectTigerMoveByDifficulty(List<Map<String, Point>> moves) {
+    // Step 1: partition into capture and normal moves
+    final List<Map<String, Point>> captureMoves = moves.where((m) => _isTigerCaptureMove(m)).toList();
+    final List<Map<String, Point>> normalMoves = moves.where((m) => !_isTigerCaptureMove(m)).toList();
+
+    switch (difficulty) {
+      case Difficulty.easy:
+        if (captureMoves.isNotEmpty) return (captureMoves..shuffle()).first;
+        return (moves..shuffle()).first;
+      case Difficulty.medium:
+        // Pick first safe capture if any, else random normal move
+        for (final m in captureMoves) {
+          if (!_tigerMoveLeadsToTrap(m)) return m;
+        }
+        final list = (normalMoves.isNotEmpty ? normalMoves : moves)..shuffle();
+        return list.first;
+      case Difficulty.hard:
+        // Evaluate all moves and pick the highest-scoring
+        return _bestTigerMoveByHeuristic(moves, unbeatableBias: false);
+      case Difficulty.unbeatable:
+        // Forbid trap-inducing moves, strongly prefer captures, keep center/mobility high
+        final filtered = moves.where((m) => !_tigerMoveLeadsToTrap(m)).toList();
+        final candidateSet = filtered.isNotEmpty ? filtered : moves;
+        return _bestTigerMoveByHeuristic(candidateSet, unbeatableBias: true);
+    }
+  }
+
+  Map<String, Point> _bestTigerMoveByHeuristic(List<Map<String, Point>> moves, {required bool unbeatableBias}) {
+    Map<String, Point>? bestMove;
+    double bestScore = double.negativeInfinity;
+    for (final m in moves) {
+      final double score = _evaluateTigerMove(m, unbeatableBias: unbeatableBias);
+      if (score > bestScore) {
+        bestScore = score;
+        bestMove = m;
+      }
+    }
+    return bestMove ?? moves.first;
+  }
+
+  bool _isTigerCaptureMove(Map<String, Point> move) {
+    final from = move['from']!;
+    final to = move['to']!;
+    if (boardType == BoardType.square) {
+      return (to.x - from.x).abs() == 2 || (to.y - from.y).abs() == 2;
+    } else {
+      // In Aadu Puli, non-adjacent valid tiger moves correspond to jumps (captures)
+      return !from.adjacentPoints.contains(to);
+    }
+  }
+
+  bool _tigerMoveLeadsToTrap(Map<String, Point> move) {
+    if (boardType == BoardType.square) {
+      final b = _cloneSquareBoard(board);
+      final from = b[move['from']!.x][move['from']!.y];
+      final to = b[move['to']!.x][move['to']!.y];
+      square.SquareBoardLogic.executeMove(from, to, b);
+      // After the move, check mobility of the moved tiger only
+      final movedTiger = to;
+      final mobility = square.SquareBoardLogic.getValidMoves(movedTiger, b).length;
+      return mobility == 0;
+    } else if (boardConfig != null) {
+      final cfg = _cloneAaduPuliConfig(boardConfig!);
+      final from = cfg.nodes.firstWhere((n) => n.id == move['from']!.id);
+      final to = cfg.nodes.firstWhere((n) => n.id == move['to']!.id);
+      aadu.AaduPuliLogic.executeMove(from, to, cfg);
+      final movedTiger = to;
+      final mobility = aadu.AaduPuliLogic.getValidMoves(movedTiger, cfg).length;
+      return mobility == 0;
+    }
+    return false;
+  }
+
+  double _evaluateTigerMove(Map<String, Point> move, {required bool unbeatableBias}) {
+    // Simulate the move and evaluate resulting board for the tiger side
+    int goatsCaptured = _isTigerCaptureMove(move) ? 1 : 0;
+    int tigerMobility = 0;
+    int goatsInDanger = 0;
+    int tigersBlocked = 0;
+    int trapRisk = 0; // 0 or 1 for unbeatable bias
+    double centerBonus = 0.0;
+
+    if (boardType == BoardType.square) {
+      final b = _cloneSquareBoard(board);
+      final from = b[move['from']!.x][move['from']!.y];
+      final to = b[move['to']!.x][move['to']!.y];
+      square.SquareBoardLogic.executeMove(from, to, b);
+
+      // Tiger mobility after move (all tigers)
+      tigerMobility = _calculateTigerMobility(b);
+
+      // Goats in danger: goats adjacent to a tiger with an empty landing
+      for (final tiger in b.expand((row) => row).where((p) => p.type == PieceType.tiger)) {
+        for (final adj in tiger.adjacentPoints) {
+          if (adj.type != PieceType.goat) continue;
+          final dx = adj.x - tiger.x;
+          final dy = adj.y - tiger.y;
+          final lx = adj.x + dx;
+          final ly = adj.y + dy;
+          if (lx >= 0 && lx < 5 && ly >= 0 && ly < 5) {
+            final landing = b[lx][ly];
+            if (landing.type == PieceType.empty && adj.adjacentPoints.contains(landing)) {
+              goatsInDanger++;
+            }
+          }
+        }
+      }
+
+      // Tigers blocked count
+      tigersBlocked = _countBlockedTigersOn(b);
+
+      // Trap risk for moved tiger
+      final movedTiger = to;
+      final movedMobility = square.SquareBoardLogic.getValidMoves(movedTiger, b).length;
+      trapRisk = movedMobility == 0 ? 1 : 0;
+
+      // Center preference: closer to (2,2)
+      final cx = 2;
+      final cy = 2;
+      final dx = (movedTiger.x - cx);
+      final dy = (movedTiger.y - cy);
+      final dist2 = (dx * dx + dy * dy).toDouble();
+      centerBonus = -dist2; // smaller distance -> higher bonus
+    } else if (boardConfig != null) {
+      final cfg = _cloneAaduPuliConfig(boardConfig!);
+      final from = cfg.nodes.firstWhere((n) => n.id == move['from']!.id);
+      final to = cfg.nodes.firstWhere((n) => n.id == move['to']!.id);
+      aadu.AaduPuliLogic.executeMove(from, to, cfg);
+
+      tigerMobility = _calculateTigerMobilityConfig(cfg);
+
+      // Goats in danger on graph: goat adjacent to tiger with an empty valid landing that forms a jump triple
+      for (final tiger in cfg.nodes.where((n) => n.type == PieceType.tiger)) {
+        for (final goat in tiger.adjacentPoints.where((p) => p.type == PieceType.goat)) {
+          for (final landing in goat.adjacentPoints) {
+            if (landing == tiger || landing.type != PieceType.empty) continue;
+            final key = '${tiger.id},${goat.id},${landing.id}';
+            if (aadu.AaduPuliLogic.isJumpTriple(key)) goatsInDanger++;
+          }
+        }
+      }
+
+      // Tigers blocked count
+      tigersBlocked = _areAllTigersBlockedOnConfig(cfg) ? cfg.nodes.where((n) => n.type == PieceType.tiger).length :
+        cfg.nodes.where((n) => n.type == PieceType.tiger && aadu.AaduPuliLogic.getValidMoves(n, cfg).isEmpty).length;
+
+      // Trap risk for moved tiger
+      final movedTiger = to;
+      final movedMobility = aadu.AaduPuliLogic.getValidMoves(movedTiger, cfg).length;
+      trapRisk = movedMobility == 0 ? 1 : 0;
+
+      // Center preference: nodes with more connections
+      centerBonus = movedTiger.adjacentPoints.length.toDouble();
+    }
+
+    double score = 0.0;
+    score += goatsCaptured * 100.0;
+    score += tigerMobility * 20.0;
+    score += goatsInDanger * 30.0;
+    score -= tigersBlocked * 50.0;
+    if (unbeatableBias) {
+      score -= trapRisk * 9999.0;
+      // Additional unbeatable preferences
+      if (_isTigerCaptureMove(move)) score += 200.0; // always prefer captures
+      score += centerBonus * 5.0; // prioritize center
+    } else {
+      // Mild center bonus in hard mode
+      score += centerBonus * 1.0;
+      // Light penalty for trap risk
+      score -= trapRisk * 200.0;
+    }
+
+    return score;
   }
 
   void _placeGoat(Point point) {
