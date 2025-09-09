@@ -308,6 +308,7 @@ class GoatAI {
     return selected;
   }
 
+
   static Map<String, Point> _hardMovement(
     List<List<Point>> board,
     BoardConfig? boardConfig,
