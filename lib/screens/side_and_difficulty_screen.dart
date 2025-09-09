@@ -74,7 +74,6 @@ class _SideAndDifficultyScreenState extends State<SideAndDifficultyScreen> {
                             DropdownMenuItem(value: Difficulty.easy, child: Text('Easy', style: TextStyle(color: Colors.lightBlue))),
                             DropdownMenuItem(value: Difficulty.medium, child: Text('Medium', style: TextStyle(color: Colors.lightBlue))),
                             DropdownMenuItem(value: Difficulty.hard, child: Text('Hard', style: TextStyle(color: Colors.lightBlue))),
-                            DropdownMenuItem(value: Difficulty.unbeatable, child: Text('Unbeatable', style: TextStyle(color: Colors.lightBlue))),
                           ],
                           onChanged: (diff) {
                             if (diff != null) setState(() => _selectedDifficulty = diff);

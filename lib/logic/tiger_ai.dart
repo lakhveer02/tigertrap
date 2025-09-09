@@ -19,8 +19,6 @@ class TigerAI {
         return _mediumMovement(board, boardConfig, boardType);
       case Difficulty.hard:
         return _hardMovement(board, boardConfig, boardType);
-      case Difficulty.unbeatable:
-        return _hardMovement(board, boardConfig, boardType);
     }
   }
 
