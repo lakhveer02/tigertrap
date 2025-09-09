@@ -19,6 +19,9 @@ class TigerAI {
         return _mediumMovement(board, boardConfig, boardType);
       case Difficulty.hard:
         return _hardMovement(board, boardConfig, boardType);
+      case Difficulty.unbeatable:
+        // Treat tiger unbeatable as hard (unbeatable bias is for goats)
+        return _hardMovement(board, boardConfig, boardType);
     }
   }
 
