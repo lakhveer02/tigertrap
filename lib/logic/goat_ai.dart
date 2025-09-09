@@ -38,6 +38,8 @@ class GoatAI {
           return _mediumPlacement(board, boardConfig, boardType, placedGoats);
         case Difficulty.hard:
           return _hardPlacement(board, boardConfig, boardType, placedGoats, unsafeMoveHistory);
+        case Difficulty.unbeatable:
+          return _hardPlacement(board, boardConfig, boardType, placedGoats, unsafeMoveHistory);
       }
     } catch (e) {
       developer.log('GoatAI.placeGoat error: $e');
@@ -70,6 +72,8 @@ class GoatAI {
         case Difficulty.medium:
           return _mediumMovement(board, boardConfig, boardType);
         case Difficulty.hard:
+          return _hardMovement(board, boardConfig, boardType);
+        case Difficulty.unbeatable:
           return _hardMovement(board, boardConfig, boardType);
       }
     } catch (e) {
