@@ -999,6 +999,15 @@ class GameController extends ChangeNotifier {
             double.negativeInfinity,
             double.infinity,
           );
+        case Difficulty.unbeatable:
+          // Tiger uses hard logic; goat-side bias implements the unbeatable behavior
+          return _minimaxMove(
+            moves,
+            2,
+            true,
+            double.negativeInfinity,
+            double.infinity,
+          );
       }
     }
     return moves[_randomInt(moves.length)];
