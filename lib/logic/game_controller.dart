@@ -478,17 +478,6 @@ class GameController extends ChangeNotifier {
       }
     }
 
-    // Hard mode priority 2.2: deterministic opening sequence to progressively cage tigers
-    // Follows a perimeter-first then key-center pattern matching the provided strategy
-    if (difficulty == Difficulty.hard && boardType == BoardType.square) {
-      final Point? openingPick = _nextOpeningBookPlacementSquare(onlyFrom: emptyPoints);
-      if (openingPick != null) {
-        debugPrint("[hard AI] Opening sequence: placing at ${openingPick.x}, ${openingPick.y}");
-        _placeGoat(openingPick);
-        return;
-      }
-    }
-
     // Hard mode priority 3: if any placement immediately blocks all tigers, do it
     if (difficulty == Difficulty.hard) {
       if (boardType == BoardType.square) {
