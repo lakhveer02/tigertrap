@@ -67,17 +67,20 @@ class _SideAndDifficultyScreenState extends State<SideAndDifficultyScreen> {
                       child: DropdownButtonHideUnderline(
                         child: DropdownButton<Difficulty>(
                           dropdownColor: Colors.black87,
-                          value: _selectedDifficulty,
+                          value: _selectedDifficulty == Difficulty.unbeatable ? Difficulty.hard : _selectedDifficulty,
                           isExpanded: true,
                           style: AppTextStyles.starText(context).copyWith(color: Colors.lightBlue),
                           items: [
                             DropdownMenuItem(value: Difficulty.easy, child: Text('Easy', style: TextStyle(color: Colors.lightBlue))),
                             DropdownMenuItem(value: Difficulty.medium, child: Text('Medium', style: TextStyle(color: Colors.lightBlue))),
                             DropdownMenuItem(value: Difficulty.hard, child: Text('Hard', style: TextStyle(color: Colors.lightBlue))),
-                            DropdownMenuItem(value: Difficulty.unbeatable, child: Text('Hard Ai ', style: TextStyle(color: Colors.lightBlue))),
                           ],
                           onChanged: (diff) {
-                            if (diff != null) setState(() => _selectedDifficulty = diff);
+                            if (diff != null) {
+                              setState(() {
+                                _selectedDifficulty = diff == Difficulty.hard ? Difficulty.unbeatable : diff;
+                              });
+                            }
                           },
                         ),
                       ),

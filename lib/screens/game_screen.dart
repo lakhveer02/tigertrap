@@ -10,99 +10,122 @@ import '../logic/game_controller.dart';
 import '../models/aadu_puli_node.dart' as model_piece;
 import '../constants.dart';
 
-class GameScreen extends StatelessWidget {
+class GameScreen extends StatefulWidget {
   const GameScreen({super.key});
 
   @override
+  State<GameScreen> createState() => _GameScreenState();
+}
+
+class _GameScreenState extends State<GameScreen> {
+  bool _dialogShown = false;
+
+  Future<bool> _onWillPop() async {
+    final controller = context.read<GameController>();
+    if (!controller.isPaused) {
+      controller.pauseGame();
+    }
+    return false;
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return Consumer<GameController>(
-      builder: (context, controller, _) {
-        if (controller.gameMessage != null) {
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            _showGameOverDialog(context, controller);
-          });
-        }
-        return Scaffold(
-          appBar: AppBar(
-            iconTheme: const IconThemeData(color: Colors.white),
-            backgroundColor: Colors.transparent,
-            elevation: 0,
-            title: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Image.asset('assets/images/tiger.png', width: 32, height: 32),
-                const SizedBox(width: 8),
-                Text(
-                  'Tiger Trap',
-                  style: GoogleFonts.lora(
-                    color: Colors.amber.shade400,
-                    fontSize: 22,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: 1.2,
-                  ),
-                ),
-              ],
-            ),
-            centerTitle: true,
-            actions: [
-              IconButton(
-                icon: Icon(controller.isPaused ? Icons.play_arrow : Icons.pause),
-                onPressed: () {
-                  if (controller.isPaused) {
-                    controller.resumeGame();
-                  } else {
-                    controller.pauseGame();
-                  }
-                },
-                tooltip: controller.isPaused ? 'Resume Game' : 'Pause Game',
-              ),
-            ],
-            flexibleSpace: Container(
-              decoration: const BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    Color(0xFF33691E),
-                    Color(0xFF558B2F),
-                    Color(0xFF1B5E20),
-                  ],
-                  stops: [0.0, 0.6, 1.0],
-                ),
-              ),
-            ),
-          ),
-          body: Stack(
-            children: [
-              Container(
-                decoration: const BoxDecoration(
-                  image: DecorationImage(
-                    image: AssetImage('assets/images/jungle_bg.jpg'),
-                    fit: BoxFit.cover,
-                  ),
-                ),
-              ),
-              Column(
+    return WillPopScope(
+      onWillPop: _onWillPop,
+      child: Consumer<GameController>(
+        builder: (context, controller, _) {
+          if (controller.gameMessage != null && !_dialogShown) {
+            _dialogShown = true;
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              _showGameOverDialog(context, controller);
+            });
+          }
+          if (controller.gameMessage == null && _dialogShown) {
+            // Reset flag when new game starts
+            _dialogShown = false;
+          }
+          return Scaffold(
+            appBar: AppBar(
+              iconTheme: const IconThemeData(color: Colors.white),
+              backgroundColor: Colors.transparent,
+              elevation: 0,
+              title: Row(
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  _buildScorePanel(context, controller),
-                  Expanded(
-                    child: Center(
-                      child: AspectRatio(
-                        aspectRatio: 0.75,
-                        child: Stack(
-                          alignment: Alignment.center,
-                          children: [_buildGameBoard()],
-                        ),
-                      ),
+                  Image.asset('assets/images/tiger.png', width: 32, height: 32),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Tiger Trap',
+                    style: GoogleFonts.lora(
+                      color: Colors.amber.shade400,
+                      fontSize: 22,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 1.2,
                     ),
                   ),
                 ],
               ),
-              if (controller.isPaused) _buildPauseMenu(context, controller),
-            ],
-          ),
-        );
-      },
+              centerTitle: true,
+              actions: [
+                IconButton(
+                  icon: Icon(controller.isPaused ? Icons.play_arrow : Icons.pause),
+                  onPressed: () {
+                    if (controller.isPaused) {
+                      controller.resumeGame();
+                    } else {
+                      controller.pauseGame();
+                    }
+                  },
+                  tooltip: controller.isPaused ? 'Resume Game' : 'Pause Game',
+                ),
+              ],
+              flexibleSpace: Container(
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      Color(0xFF33691E),
+                      Color(0xFF558B2F),
+                      Color(0xFF1B5E20),
+                    ],
+                    stops: [0.0, 0.6, 1.0],
+                  ),
+                ),
+              ),
+            ),
+            body: Stack(
+              children: [
+                Container(
+                  decoration: const BoxDecoration(
+                    image: DecorationImage(
+                      image: AssetImage('assets/images/jungle_bg.jpg'),
+                      fit: BoxFit.cover,
+                    ),
+                  ),
+                ),
+                Column(
+                  children: [
+                    _buildScorePanel(context, controller),
+                    Expanded(
+                      child: Center(
+                        child: AspectRatio(
+                          aspectRatio: 0.75,
+                          child: Stack(
+                            alignment: Alignment.center,
+                            children: [_buildGameBoard()],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                if (controller.isPaused) _buildPauseMenu(context, controller),
+              ],
+            ),
+          );
+        },
+      ),
     );
   }
 
@@ -195,28 +218,54 @@ class GameScreen extends StatelessWidget {
   }
 
   Widget _buildScorePanel(BuildContext context, GameController game) {
+    // Determine player labels
+    String tigerLabel = 'Player 1';
+    String goatLabel = 'Player 2';
+    if (game.gameMode == GameMode.pvc) {
+      if (game.tigerPlayer == PlayerType.computer) {
+        tigerLabel = 'AI';
+        goatLabel = 'You';
+      } else if (game.goatPlayer == PlayerType.computer) {
+        tigerLabel = 'You';
+        goatLabel = 'AI';
+      }
+    }
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
       child: Row(
-            children: [
-              Expanded(
-                flex: 1,
-                child: _PlayerScoreColumn(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            flex: 1,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _PlayerLabel(label: tigerLabel),
+                const SizedBox(height: 4),
+                _PlayerScoreColumn(
                   isComputer: game.gameMode == GameMode.pvc && game.tigerPlayer == PlayerType.computer,
-                  playerLabel: game.gameMode == GameMode.pvc && game.tigerPlayer == PlayerType.computer ? 'Computer' : 'Player 1',
+                  playerLabel: tigerLabel,
                   pieceLabel: 'Tiger',
                   imageAsset: 'assets/images/tiger.png',
                   count: game.capturedGoats,
                   color: Colors.amber.shade400,
                   isActive: game.currentTurn == model_piece.PieceType.tiger,
+                  showLabel: false,
                 ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                flex: 1,
-                child: _PlayerScoreColumn(
-                  isComputer: false, // Always human for goat
-                  playerLabel: 'Player 2',
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            flex: 1,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _PlayerLabel(label: goatLabel),
+                const SizedBox(height: 4),
+                _PlayerScoreColumn(
+                  isComputer: game.gameMode == GameMode.pvc && game.goatPlayer == PlayerType.computer,
+                  playerLabel: goatLabel,
                   pieceLabel: 'Goat',
                   imageAsset: 'assets/images/goat.png',
                   count:
@@ -225,10 +274,13 @@ class GameScreen extends StatelessWidget {
                           : 15 - game.placedGoats,
                   color: Colors.blueGrey.shade100,
                   isActive: game.currentTurn == model_piece.PieceType.goat,
+                  showLabel: false,
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
+        ],
+      ),
     );
   }
 
@@ -256,6 +308,36 @@ class GameScreen extends StatelessWidget {
   }
 }
 
+class _PlayerLabel extends StatelessWidget {
+  final String label;
+  const _PlayerLabel({required this.label});
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
+      decoration: BoxDecoration(
+        color: Colors.black.withOpacity(0.45),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Text(
+        label,
+        style: AppTextStyles.starText(context).copyWith(
+          color: Colors.white,
+          fontWeight: FontWeight.bold,
+          fontSize: 18,
+          shadows: [
+            Shadow(
+              color: Colors.black.withOpacity(0.5),
+              blurRadius: 4,
+              offset: Offset(0, 2),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _PlayerScoreColumn extends StatelessWidget {
   final bool isComputer;
   final String playerLabel;
@@ -264,6 +346,7 @@ class _PlayerScoreColumn extends StatelessWidget {
   final int count;
   final Color color;
   final bool isActive;
+  final bool showLabel;
 
   const _PlayerScoreColumn({
     required this.isComputer,
@@ -273,6 +356,7 @@ class _PlayerScoreColumn extends StatelessWidget {
     required this.count,
     required this.color,
     required this.isActive,
+    this.showLabel = true,
   });
 
   @override
@@ -280,13 +364,14 @@ class _PlayerScoreColumn extends StatelessWidget {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Text(
-          playerLabel,
-          style: AppTextStyles.starText(
-            context,
-          ).copyWith(color: Colors.white, fontWeight: FontWeight.bold),
-        ),
-        const SizedBox(height: 2),
+        if (showLabel)
+          Text(
+            playerLabel,
+            style: AppTextStyles.starText(
+              context,
+            ).copyWith(color: Colors.white, fontWeight: FontWeight.bold),
+          ),
+        if (showLabel) const SizedBox(height: 2),
         Stack(
           children: [
             _PlayerScore(

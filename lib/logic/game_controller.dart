@@ -120,19 +120,23 @@ class GameController extends ChangeNotifier {
 
   bool _isHumanTurn() {
     if (gameMode == GameMode.pvp) return true;
-    if (currentTurn == PieceType.tiger && tigerPlayer == PlayerType.human)
+    if (currentTurn == PieceType.tiger && tigerPlayer == PlayerType.human) {
       return true;
-    if (currentTurn == PieceType.goat && goatPlayer == PlayerType.human)
+    }
+    if (currentTurn == PieceType.goat && goatPlayer == PlayerType.human) {
       return true;
+    }
     return false;
   }
 
   bool isComputerTurn() {
     if (gameMode != GameMode.pvc) return false;
-    if (currentTurn == PieceType.tiger && tigerPlayer == PlayerType.computer)
+    if (currentTurn == PieceType.tiger && tigerPlayer == PlayerType.computer) {
       return true;
-    if (currentTurn == PieceType.goat && goatPlayer == PlayerType.computer)
+    }
+    if (currentTurn == PieceType.goat && goatPlayer == PlayerType.computer) {
       return true;
+    }
     return false;
   }
 
@@ -1215,27 +1219,21 @@ class GameController extends ChangeNotifier {
     if (boardType == BoardType.square) {
       if (square.SquareBoardLogic.checkTigerWin(capturedGoats)) {
         win = true;
-        message = 'Tigers Win!';
+        message = 'Tigers win the game by killing 5 goats.';
       } else if (square.SquareBoardLogic.checkGoatWin(board)) {
         win = true;
-        message = 'Goats Win!';
+        message = 'Goats win by blocking all the Tigers.';
       }
-      if (_areAllTigersBlocked()) {
-        debugPrint("[hard AI] Win detected: All tigers blocked.");
-        _showGameOver('Goats Win! (Tigers Blocked)');
-        return;
-      }
-    } else {
+    } else if (boardType == BoardType.aaduPuli && boardConfig != null) {
       if (aadu.AaduPuliLogic.checkTigerWin(capturedGoats)) {
         win = true;
-        message = 'Tigers Win!';
+        message = 'Tigers win the game by killing 5 goats.';
       } else if (aadu.AaduPuliLogic.checkGoatWin(boardConfig!)) {
         win = true;
-        message = 'Goats Win!';
+        message = 'Goats win by blocking all the Tigers.';
       }
     }
     if (win) {
-      debugPrint("[hard AI] Win detected: $message");
       _showGameOver(message!);
     }
   }
