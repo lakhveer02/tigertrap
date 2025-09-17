@@ -8,18 +8,22 @@ class SideAndDifficultyScreen extends StatefulWidget {
   const SideAndDifficultyScreen({super.key});
 
   @override
-  State<SideAndDifficultyScreen> createState() => _SideAndDifficultyScreenState();
+  State<SideAndDifficultyScreen> createState() =>
+      _SideAndDifficultyScreenState();
 }
 
 class _SideAndDifficultyScreenState extends State<SideAndDifficultyScreen> {
-  PlayerSide _selectedSide = PlayerSide.tiger; 
+  PlayerSide _selectedSide = PlayerSide.tiger;
   Difficulty _selectedDifficulty = Difficulty.medium;
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('Choose Side & Difficulty', style: AppTextStyles.cosmicTitle(context)),
+        title: Text(
+          'Choose Side & Difficulty',
+          style: AppTextStyles.cosmicTitle(context),
+        ),
         backgroundColor: Colors.transparent,
         elevation: 0,
         centerTitle: true,
@@ -35,50 +39,104 @@ class _SideAndDifficultyScreenState extends State<SideAndDifficultyScreen> {
             child: Card(
               color: Colors.black.withAlpha((0.5 * 255).toInt()),
               elevation: 8,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(24),
+              ),
               child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 32, horizontal: 28),
+                padding: const EdgeInsets.symmetric(
+                  vertical: 32,
+                  horizontal: 28,
+                ),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Text('Choose Your Side:', style: AppTextStyles.nebulaSubtitle(context)),
+                    Text(
+                      'Choose Your Side:',
+                      style: AppTextStyles.nebulaSubtitle(context),
+                    ),
                     const SizedBox(height: 16),
                     Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        _buildSideButton(PlayerSide.tiger, 'Tiger', 'assets/images/tiger.png'),
+                        _buildSideButton(
+                          PlayerSide.tiger,
+                          'Tiger',
+                          'assets/images/tiger.png',
+                        ),
                         const SizedBox(width: 32),
-                        _buildSideButton(PlayerSide.goat, 'Goat', 'assets/images/goat.png'),
+                        _buildSideButton(
+                          PlayerSide.goat,
+                          'Goat',
+                          'assets/images/goat.png',
+                        ),
                       ],
                     ),
                     const SizedBox(height: 36),
                     Align(
                       alignment: Alignment.center,
-                      child: Text('Select Difficulty:', style: AppTextStyles.nebulaSubtitle(context)),
+                      child: Text(
+                        'Select Difficulty:',
+                        style: AppTextStyles.nebulaSubtitle(context),
+                      ),
                     ),
                     const SizedBox(height: 16),
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 4),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 18,
+                        vertical: 4,
+                      ),
                       decoration: BoxDecoration(
                         color: Colors.black.withAlpha((0.3 * 255).toInt()),
                         borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: AppColors.stellarGold.withAlpha((0.3 * 255).toInt())),
+                        border: Border.all(
+                          color: AppColors.stellarGold.withAlpha(
+                            (0.3 * 255).toInt(),
+                          ),
+                        ),
                       ),
                       child: DropdownButtonHideUnderline(
                         child: DropdownButton<Difficulty>(
                           dropdownColor: Colors.black87,
-                          value: _selectedDifficulty == Difficulty.unbeatable ? Difficulty.hard : _selectedDifficulty,
+                          value:
+                              _selectedDifficulty == Difficulty.unbeatable
+                                  ? Difficulty.hard
+                                  : _selectedDifficulty,
                           isExpanded: true,
-                          style: AppTextStyles.starText(context).copyWith(color: Colors.lightBlue),
+                          style: AppTextStyles.starText(
+                            context,
+                          ).copyWith(color: Colors.lightBlue),
                           items: [
-                            DropdownMenuItem(value: Difficulty.easy, child: Text('Easy', style: TextStyle(color: Colors.lightBlue))),
-                            DropdownMenuItem(value: Difficulty.medium, child: Text('Medium', style: TextStyle(color: Colors.lightBlue))),
-                            DropdownMenuItem(value: Difficulty.hard, child: Text('Hard', style: TextStyle(color: Colors.lightBlue))),
+                            // Difficulty levels
+                            DropdownMenuItem(
+                              value: Difficulty.easy,
+                              child: Text(
+                                'Easy',
+                                style: TextStyle(color: Colors.lightBlue),
+                              ),
+                            ),
+                            DropdownMenuItem(
+                              value: Difficulty.medium,
+                              child: Text(
+                                'Medium',
+                                style: TextStyle(color: Colors.lightBlue),
+                              ),
+                            ),
+                            DropdownMenuItem(
+                              value: Difficulty.hard,
+                              child: Text(
+                                'Hard',
+                                style: TextStyle(color: Colors.lightBlue),
+                              ),
+                            ),
                           ],
                           onChanged: (diff) {
                             if (diff != null) {
+                              // Toggle unbeatable mode if hard is selected again
                               setState(() {
-                                _selectedDifficulty = diff == Difficulty.hard ? Difficulty.unbeatable : diff;
+                                _selectedDifficulty =
+                                    diff == Difficulty.hard
+                                        ? Difficulty.unbeatable
+                                        : diff;
                               });
                             }
                           },
@@ -90,8 +148,13 @@ class _SideAndDifficultyScreenState extends State<SideAndDifficultyScreen> {
                       width: double.infinity,
                       child: ElevatedButton(
                         style: ElevatedButton.styleFrom(
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                          padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 32),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          padding: const EdgeInsets.symmetric(
+                            vertical: 16,
+                            horizontal: 32,
+                          ),
                           backgroundColor: AppColors.cosmicBlue,
                           foregroundColor: Colors.black,
                           elevation: 4,
@@ -106,11 +169,17 @@ class _SideAndDifficultyScreenState extends State<SideAndDifficultyScreen> {
                           Navigator.pushReplacement(
                             context,
                             MaterialPageRoute(
-                              builder: (_) => BoardSelectionScreen(gameMode: GameMode.pvc),
+                              builder:
+                                  (_) => BoardSelectionScreen(
+                                    gameMode: GameMode.pvc,
+                                  ),
                             ),
                           );
                         },
-                        child: Text('Continue', style: AppTextStyles.starText(context)),
+                        child: Text(
+                          'Continue',
+                          style: AppTextStyles.starText(context),
+                        ),
                       ),
                     ),
                   ],
@@ -131,9 +200,10 @@ class _SideAndDifficultyScreenState extends State<SideAndDifficultyScreen> {
           Container(
             decoration: BoxDecoration(
               border: Border.all(
-                color: _selectedSide == side 
-                  ? AppColors.stellarGold 
-                  : Colors.transparent,
+                color:
+                    _selectedSide == side
+                        ? AppColors.stellarGold
+                        : Colors.transparent,
                 width: 3,
               ),
               borderRadius: BorderRadius.circular(12),

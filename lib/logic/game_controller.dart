@@ -4,8 +4,6 @@ import '../constants.dart';
 import '../utils/board_utils.dart';
 import '../models/board_config.dart';
 import '../logic/square_board_logic.dart' as square;
-import '../logic/aadu_puli_logic.dart' as aadu;
-/*import '../providers/background_audio_provider.dart';*/
 import 'dart:math';
 import 'dart:async';
 
@@ -19,7 +17,11 @@ class _JumpThreat {
   final Point tiger;
   final Point victim;
   final Point landing;
-  const _JumpThreat({required this.tiger, required this.victim, required this.landing});
+  const _JumpThreat({
+    required this.tiger,
+    required this.victim,
+    required this.landing,
+  });
 }
 
 class GameController extends ChangeNotifier {
@@ -65,7 +67,6 @@ class GameController extends ChangeNotifier {
       boardConfig = null;
     } else {
       boardConfig = BoardUtils.getAaduPuliConfig();
-      aadu.AaduPuliLogic.initializeBoard(boardConfig!);
       board = [];
     }
     placedGoats = 0;
@@ -100,7 +101,8 @@ class GameController extends ChangeNotifier {
       debugPrint("Placed goat at ${point.x}, ${point.y}");
     } else {
       final Point? fromBefore = selectedPiece;
-      final List<Point> validBefore = fromBefore != null ? _getValidMoves(fromBefore) : const [];
+      final List<Point> validBefore =
+          fromBefore != null ? _getValidMoves(fromBefore) : const [];
       final bool willMove = fromBefore != null && validBefore.contains(point);
       _handleMovement(point);
       if (willMove) {
@@ -148,7 +150,6 @@ class GameController extends ChangeNotifier {
       if (boardType == BoardType.square) {
         _makeSquareComputerMove();
       } else {
-        _makeAaduPuliComputerMove();
       }
     } else if (currentTurn == PieceType.goat) {
       _makeGoatComputerMove();
@@ -192,59 +193,7 @@ class GameController extends ChangeNotifier {
     notifyListeners();
   }
 
-  void _makeAaduPuliComputerMove() {
-    if (boardConfig == null) return;
-    final moves = <Map<String, Point>>[];
-    for (final piece in boardConfig!.nodes.where(
-      (n) => n.type == currentTurn,
-    )) {
-      final valid = aadu.AaduPuliLogic.getValidMoves(piece, boardConfig!);
-      for (final to in valid) {
-        moves.add({'from': piece, 'to': to});
-      }
-    }
-    if (moves.isEmpty) return;
-
-    Map<String, Point> move;
-    if (difficulty == Difficulty.easy) {
-      move = (moves..shuffle()).first;
-    } else if (difficulty == Difficulty.medium) {
-      move = moves.firstWhere(
-        (m) =>
-            aadu.AaduPuliLogic.getValidMoves(m['to']!, boardConfig!).isNotEmpty,
-        orElse: () => (moves..shuffle()).first,
-      );
-    } else {
-      if (playerSide == PlayerSide.goat) {
-        move = moves.first;
-      } else {
-        move = _minimaxMove(
-          moves,
-          2,
-          true,
-          double.negativeInfinity,
-          double.infinity,
-        );
-      }
-    }
-    _executeMove(move['from']!, move['to']!);
-    if (currentTurn == PieceType.tiger) {
-      currentTurn = PieceType.goat;
-      bool allBlocked = _areAllGoatsBlocked();
-      if (allBlocked) {
-        gameMessage = "Goat's turn is skipped";
-        currentTurn = PieceType.tiger;
-        notifyListeners();
-        return;
-      }
-    } else {
-      currentTurn = PieceType.tiger;
-    }
-    selectedPiece = null;
-    validMoves = [];
-    if (gameMessage == "Goat's turn is skipped") gameMessage = null;
-    notifyListeners();
-  }
+  
 
   void _makeGoatComputerMove() {
     if (!isGoatMovementPhase) {
@@ -283,7 +232,9 @@ class GameController extends ChangeNotifier {
           final clone = _cloneSquareBoard(board);
           clone[p.x][p.y].type = PieceType.goat;
           if (_areAllTigersBlockedOn(clone)) {
-            debugPrint("[hard AI] Placement wins the game by blocking all tigers at ${p.x}, ${p.y}");
+            debugPrint(
+              "[hard AI] Placement wins the game by blocking all tigers at ${p.x}, ${p.y}",
+            );
             _placeGoat(p);
             _checkWinConditions();
             return;
@@ -295,7 +246,9 @@ class GameController extends ChangeNotifier {
           final cPoint = cfgClone.nodes.firstWhere((n) => n.id == p.id);
           cPoint.type = PieceType.goat;
           if (_areAllTigersBlockedOnConfig(cfgClone)) {
-            debugPrint("[hard AI] Placement wins the game by blocking all tigers (Aadu Puli) at ${p.x}, ${p.y}");
+            debugPrint(
+              "[hard AI] Placement wins the game by blocking all tigers (Aadu Puli) at ${p.x}, ${p.y}",
+            );
             _placeGoat(p);
             _checkWinConditions();
             return;
@@ -375,7 +328,9 @@ class GameController extends ChangeNotifier {
           }
         }
         if (bestSafeBlock != null) {
-          debugPrint("[hard AI] Blocking tiger jump by placing at ${bestSafeBlock.x}, ${bestSafeBlock.y}");
+          debugPrint(
+            "[hard AI] Blocking tiger jump by placing at ${bestSafeBlock.x}, ${bestSafeBlock.y}",
+          );
           _placeGoat(bestSafeBlock);
           return;
         }
@@ -419,7 +374,9 @@ class GameController extends ChangeNotifier {
           }
         }
         if (bestBlock != null) {
-          debugPrint("[hard AI] Blocking tiger jump by placing (unsafe fallback) at ${bestBlock.x}, ${bestBlock.y}");
+          debugPrint(
+            "[hard AI] Blocking tiger jump by placing (unsafe fallback) at ${bestBlock.x}, ${bestBlock.y}",
+          );
           unsafeMoveHistory.add('${bestBlock.x},${bestBlock.y}');
           _placeGoat(bestBlock);
           return;
@@ -427,7 +384,8 @@ class GameController extends ChangeNotifier {
       }
     }
 
-    if ((difficulty == Difficulty.hard || isUnbeatable) && boardType == BoardType.square) {
+    if ((difficulty == Difficulty.hard || isUnbeatable) &&
+        boardType == BoardType.square) {
       final nextTurnLandingCandidates = _predictNextTurnLandingBlocksSquare();
       if (nextTurnLandingCandidates.isNotEmpty) {
         Point? bestFutureBlock;
@@ -436,12 +394,14 @@ class GameController extends ChangeNotifier {
           final bClone = _cloneSquareBoard(board);
           final landC = bClone[cand.x][cand.y];
           landC.type = PieceType.goat;
-          if (_tigerCanCaptureAfter(bClone, landC) || (isUnbeatable && !_goatIsSafeForOneTigerStep(bClone, landC))) {
+          if (_tigerCanCaptureAfter(bClone, landC) ||
+              (isUnbeatable && !_goatIsSafeForOneTigerStep(bClone, landC))) {
             continue;
           }
-          double score = isUnbeatable
-              ? _evaluateBoardStateForGoatsUnbeatable(bClone)
-              : 0.0;
+          double score =
+              isUnbeatable
+                  ? _evaluateBoardStateForGoatsUnbeatable(bClone)
+                  : 0.0;
           if (!isUnbeatable) {
             score += _calculateOuterWallScore(cand) * 400;
             final int preThreatsBefore = _countNextTurnJumpThreatsOn(board);
@@ -458,7 +418,9 @@ class GameController extends ChangeNotifier {
           }
         }
         if (bestFutureBlock != null) {
-          debugPrint("[hard AI] Preemptively blocking future jump by placing at ${bestFutureBlock.x}, ${bestFutureBlock.y}");
+          debugPrint(
+            "[hard AI] Preemptively blocking future jump by placing at ${bestFutureBlock.x}, ${bestFutureBlock.y}",
+          );
           _placeGoat(bestFutureBlock);
           return;
         }
@@ -478,7 +440,8 @@ class GameController extends ChangeNotifier {
         final bClone = _cloneSquareBoard(board);
         final c = bClone[2][2];
         c.type = PieceType.goat;
-        if (!_tigerCanCaptureAfter(bClone, c) && _goatIsSafeForOneTigerStep(bClone, c)) {
+        if (!_tigerCanCaptureAfter(bClone, c) &&
+            _goatIsSafeForOneTigerStep(bClone, c)) {
           debugPrint("[unbeatable AI] Taking safe center (2,2)");
           _placeGoat(center);
           return;
@@ -492,7 +455,9 @@ class GameController extends ChangeNotifier {
           final clone = _cloneSquareBoard(board);
           clone[p.x][p.y].type = PieceType.goat;
           if (_areAllTigersBlockedOn(clone)) {
-            debugPrint("[hard AI] Placement traps tigers; placing at ${p.x}, ${p.y}");
+            debugPrint(
+              "[hard AI] Placement traps tigers; placing at ${p.x}, ${p.y}",
+            );
             _placeGoat(p);
             return;
           }
@@ -503,7 +468,9 @@ class GameController extends ChangeNotifier {
           final cPoint = cfgClone.nodes.firstWhere((n) => n.id == p.id);
           cPoint.type = PieceType.goat;
           if (_areAllTigersBlockedOnConfig(cfgClone)) {
-            debugPrint("[hard AI] Placement traps tigers (Aadu Puli); placing at ${p.x}, ${p.y}");
+            debugPrint(
+              "[hard AI] Placement traps tigers (Aadu Puli); placing at ${p.x}, ${p.y}",
+            );
             _placeGoat(p);
             return;
           }
@@ -521,10 +488,12 @@ class GameController extends ChangeNotifier {
         final simulated = boardClone[point.x][point.y];
         simulated.type = PieceType.goat;
 
-        if ((difficulty == Difficulty.hard || isUnbeatable) && _tigerCanCaptureAfter(boardClone, simulated)) {
+        if ((difficulty == Difficulty.hard || isUnbeatable) &&
+            _tigerCanCaptureAfter(boardClone, simulated)) {
           continue;
         }
-        if (isUnbeatable && !_goatIsSafeForOneTigerStep(boardClone, simulated)) {
+        if (isUnbeatable &&
+            !_goatIsSafeForOneTigerStep(boardClone, simulated)) {
           continue;
         }
 
@@ -532,7 +501,9 @@ class GameController extends ChangeNotifier {
         if (isUnbeatable) {
           score = _evaluateBoardStateForGoatsUnbeatable(boardClone);
         } else {
-          score += _calculateOuterWallScore(point) * (placedGoats <= 12 ? 1200 : 400);
+          score +=
+              _calculateOuterWallScore(point) *
+              (placedGoats <= 12 ? 1200 : 400);
           score += _calculateBlockScoreForBoard(boardClone, simulated) * 400;
           score += _clusterBonus(boardClone, simulated) * 250;
         }
@@ -542,8 +513,13 @@ class GameController extends ChangeNotifier {
         score += (reducedMobility < initialMobility) ? 350.0 : 0.0;
 
         double worstTigerScore = double.infinity;
-        for (var tiger in boardClone.expand((row) => row).where((p) => p.type == PieceType.tiger)) {
-          var tigerMoves = square.SquareBoardLogic.getValidMoves(tiger, boardClone);
+        for (var tiger in boardClone
+            .expand((row) => row)
+            .where((p) => p.type == PieceType.tiger)) {
+          var tigerMoves = square.SquareBoardLogic.getValidMoves(
+            tiger,
+            boardClone,
+          );
           for (var move in tigerMoves) {
             var tigerBoard = _cloneSquareBoard(boardClone);
             var from = tigerBoard[tiger.x][tiger.y];
@@ -551,7 +527,8 @@ class GameController extends ChangeNotifier {
             from.type = PieceType.empty;
             to.type = PieceType.tiger;
             double tigerScore = _evaluateBoardStateForGoats(tigerBoard);
-            worstTigerScore = tigerScore < worstTigerScore ? tigerScore : worstTigerScore;
+            worstTigerScore =
+                tigerScore < worstTigerScore ? tigerScore : worstTigerScore;
           }
         }
         score -= worstTigerScore * 0.35;
@@ -572,7 +549,8 @@ class GameController extends ChangeNotifier {
 
         double score = 0;
         score += _clusterBonusConfig(cfgClone, clonePoint) * 150;
-        score += _reducesTigerMobilityConfig(cfgClone, clonePoint) ? 200.0 : 0.0;
+        score +=
+            _reducesTigerMobilityConfig(cfgClone, clonePoint) ? 200.0 : 0.0;
         score += _calculateBlockScoreConfig(cfgClone, clonePoint) * 300;
 
         if (score > bestScore) {
@@ -584,9 +562,13 @@ class GameController extends ChangeNotifier {
 
     if (bestPlacement != null) {
       if (!_isGoatPositionSafe(bestPlacement)) {
-        debugPrint("[hard AI] WARNING: Chosen placement at ${bestPlacement.x}, ${bestPlacement.y} is unsafe");
+        debugPrint(
+          "[hard AI] WARNING: Chosen placement at ${bestPlacement.x}, ${bestPlacement.y} is unsafe",
+        );
       } else {
-        debugPrint("[hard AI] Placing goat at ${bestPlacement.x}, ${bestPlacement.y} with score $bestScore");
+        debugPrint(
+          "[hard AI] Placing goat at ${bestPlacement.x}, ${bestPlacement.y} with score $bestScore",
+        );
       }
       _placeGoat(bestPlacement);
       return;
@@ -617,15 +599,22 @@ class GameController extends ChangeNotifier {
     });
 
     if (!_isGoatPositionSafe(safestPosition)) {
-      debugPrint("[hard AI] WARNING: Fallback placement at ${safestPosition.x}, ${safestPosition.y} is unsafe");
+      debugPrint(
+        "[hard AI] WARNING: Fallback placement at ${safestPosition.x}, ${safestPosition.y} is unsafe",
+      );
     } else {
-      debugPrint("[hard AI] No preferred placements; choosing safest position ${safestPosition.x}, ${safestPosition.y}");
+      debugPrint(
+        "[hard AI] No preferred placements; choosing safest position ${safestPosition.x}, ${safestPosition.y}",
+      );
     }
     _placeGoat(safestPosition);
   }
 
   double _calculateOuterWallScore(Point point) {
-    if (point.x == 0 || point.x == board.length - 1 || point.y == 0 || point.y == board[0].length - 1) {
+    if (point.x == 0 ||
+        point.x == board.length - 1 ||
+        point.y == 0 ||
+        point.y == board[0].length - 1) {
       return 1.0;
     }
     return 0.0;
@@ -639,17 +628,14 @@ class GameController extends ChangeNotifier {
         for (var goat in row.where((p) => p.type == PieceType.goat)) {
           var validMoves = square.SquareBoardLogic.getValidMoves(goat, board);
           for (var to in validMoves) {
-            if (to.type == PieceType.empty) allMoves.add({'from': goat, 'to': to});
+            if (to.type == PieceType.empty) {
+              allMoves.add({'from': goat, 'to': to});
+            }
           }
         }
       }
     } else if (boardConfig != null) {
-      for (var goat in boardConfig!.nodes.where((n) => n.type == PieceType.goat)) {
-        var valids = aadu.AaduPuliLogic.getValidMoves(goat, boardConfig!);
-        for (var to in valids) {
-          if (to.type == PieceType.empty) allMoves.add({'from': goat, 'to': to});
-        }
-      }
+      
     }
 
     if (allMoves.isEmpty) {
@@ -666,7 +652,9 @@ class GameController extends ChangeNotifier {
           from.type = PieceType.empty;
           to.type = PieceType.goat;
           if (_areAllTigersBlockedOn(boardClone)) {
-            debugPrint("[hard AI] Move wins the game by blocking all tigers: ${move['from']!.x},${move['from']!.y} -> ${move['to']!.x},${move['to']!.y}");
+            debugPrint(
+              "[hard AI] Move wins the game by blocking all tigers: ${move['from']!.x},${move['from']!.y} -> ${move['to']!.x},${move['to']!.y}",
+            );
             _executeMove(move['from']!, move['to']!);
             currentTurn = PieceType.tiger;
             _checkWinConditions();
@@ -676,12 +664,16 @@ class GameController extends ChangeNotifier {
       } else if (boardConfig != null) {
         for (final move in allMoves) {
           final cfgClone = _cloneAaduPuliConfig(boardConfig!);
-          final fromC = cfgClone.nodes.firstWhere((n) => n.id == move['from']!.id);
+          final fromC = cfgClone.nodes.firstWhere(
+            (n) => n.id == move['from']!.id,
+          );
           final toC = cfgClone.nodes.firstWhere((n) => n.id == move['to']!.id);
           fromC.type = PieceType.empty;
           toC.type = PieceType.goat;
           if (_areAllTigersBlockedOnConfig(cfgClone)) {
-            debugPrint("[hard AI] Move wins the game by blocking all tigers (Aadu Puli): ${move['from']!.x},${move['from']!.y} -> ${move['to']!.x},${move['to']!.y}");
+            debugPrint(
+              "[hard AI] Move wins the game by blocking all tigers (Aadu Puli): ${move['from']!.x},${move['from']!.y} -> ${move['to']!.x},${move['to']!.y}",
+            );
             _executeMove(move['from']!, move['to']!);
             currentTurn = PieceType.tiger;
             _checkWinConditions();
@@ -691,7 +683,8 @@ class GameController extends ChangeNotifier {
       }
     }
 
-    if ((difficulty == Difficulty.hard || isUnbeatable) && boardType == BoardType.square) {
+    if ((difficulty == Difficulty.hard || isUnbeatable) &&
+        boardType == BoardType.square) {
       int maxBlocked = -1;
       List<Map<String, Point>> bestMoves = [];
       double bestEval = double.negativeInfinity;
@@ -720,7 +713,9 @@ class GameController extends ChangeNotifier {
       }
       int currentBlocked = _countBlockedTigersOn(board);
       if (maxBlocked > currentBlocked && bestMove != null) {
-        debugPrint("[hard AI] Moving goat to maximize blocked tigers: ${bestMove['from']!.x},${bestMove['from']!.y} -> ${bestMove['to']!.x},${bestMove['to']!.y} (blocked: $maxBlocked)");
+        debugPrint(
+          "[hard AI] Moving goat to maximize blocked tigers: ${bestMove['from']!.x},${bestMove['from']!.y} -> ${bestMove['to']!.x},${bestMove['to']!.y} (blocked: $maxBlocked)",
+        );
         _executeMove(bestMove['from']!, bestMove['to']!);
         currentTurn = PieceType.tiger;
         return;
@@ -740,10 +735,16 @@ class GameController extends ChangeNotifier {
         to.type = PieceType.goat;
 
         bool isUnsafe = false;
-        for (var tiger in boardClone.expand((row) => row).where((p) => p.type == PieceType.tiger)) {
-          var tigerMoves = square.SquareBoardLogic.getValidMoves(tiger, boardClone);
+        for (var tiger in boardClone
+            .expand((row) => row)
+            .where((p) => p.type == PieceType.tiger)) {
+          var tigerMoves = square.SquareBoardLogic.getValidMoves(
+            tiger,
+            boardClone,
+          );
           for (var tigerMove in tigerMoves) {
-            if ((tigerMove.x - tiger.x).abs() == 2 || (tigerMove.y - tiger.y).abs() == 2) {
+            if ((tigerMove.x - tiger.x).abs() == 2 ||
+                (tigerMove.y - tiger.y).abs() == 2) {
               int midX = (tiger.x + tigerMove.x) ~/ 2;
               int midY = (tiger.y + tigerMove.y) ~/ 2;
               if (midX == to.x && midY == to.y) {
@@ -755,33 +756,30 @@ class GameController extends ChangeNotifier {
           if (isUnsafe) break;
         }
 
-        if (!isUnsafe && (!isUnbeatable || _goatIsSafeForOneTigerStep(boardClone, to))) {
+        if (!isUnsafe &&
+            (!isUnbeatable || _goatIsSafeForOneTigerStep(boardClone, to))) {
           safeMoves.add(move);
         }
 
-        double score = isUnbeatable ? _evaluateBoardStateForGoatsUnbeatable(boardClone) : _evaluateBoardStateForGoats(boardClone);
+        double score =
+            isUnbeatable
+                ? _evaluateBoardStateForGoatsUnbeatable(boardClone)
+                : _evaluateBoardStateForGoats(boardClone);
         if (score > bestScore) {
           bestScore = score;
           safestMove = move;
         }
       } else if (boardConfig != null) {
         final cfgClone = _cloneAaduPuliConfig(boardConfig!);
-        final fromC = cfgClone.nodes.firstWhere((n) => n.id == move['from']!.id);
+        final fromC = cfgClone.nodes.firstWhere(
+          (n) => n.id == move['from']!.id,
+        );
         final toC = cfgClone.nodes.firstWhere((n) => n.id == move['to']!.id);
         fromC.type = PieceType.empty;
         toC.type = PieceType.goat;
 
         bool isUnsafe = false;
-        for (var tiger in cfgClone.nodes.where((n) => n.type == PieceType.tiger)) {
-          var tigerMoves = aadu.AaduPuliLogic.getValidMoves(tiger, cfgClone);
-          for (var tigerMove in tigerMoves) {
-            if (aadu.AaduPuliLogic.isJumpTriple('${tiger.id},${toC.id},${tigerMove.id}')) {
-              isUnsafe = true;
-              break;
-            }
-          }
-          if (isUnsafe) break;
-        }
+       
 
         if (!isUnsafe) {
           safeMoves.add(move);
@@ -806,9 +804,12 @@ class GameController extends ChangeNotifier {
           final to = boardClone[move['to']!.x][move['to']!.y];
           from.type = PieceType.empty;
           to.type = PieceType.goat;
-          score = isUnbeatable ? _evaluateBoardStateForGoatsUnbeatable(boardClone) : _evaluateBoardStateForGoats(boardClone);
+          score =
+              isUnbeatable
+                  ? _evaluateBoardStateForGoatsUnbeatable(boardClone)
+                  : _evaluateBoardStateForGoats(boardClone);
         } else if (boardConfig != null) {
-          score = _evaluateBoardStateForGoats(_cloneSquareBoard(board)); 
+          score = _evaluateBoardStateForGoats(_cloneSquareBoard(board));
         } else {
           score = 0;
         }
@@ -822,7 +823,9 @@ class GameController extends ChangeNotifier {
     }
 
     if (chosenMove != null) {
-      debugPrint("[hard AI] Moving goat from ${chosenMove['from']!.x}, ${chosenMove['from']!.y} to ${chosenMove['to']!.x}, ${chosenMove['to']!.y} (safe: ${safeMoves.isNotEmpty})");
+      debugPrint(
+        "[hard AI] Moving goat from ${chosenMove['from']!.x}, ${chosenMove['from']!.y} to ${chosenMove['to']!.x}, ${chosenMove['to']!.y} (safe: ${safeMoves.isNotEmpty})",
+      );
       _executeMove(chosenMove['from']!, chosenMove['to']!);
       currentTurn = PieceType.tiger;
     } else {
@@ -830,12 +833,14 @@ class GameController extends ChangeNotifier {
     }
   }
 
-  bool _areAdjacent(Point a, Point b) => a.adjacentPoints.contains(b);
 
   bool _isGoatPositionSafe(Point position) {
     if (boardType == BoardType.square) {
-      for (final tiger in board.expand((row) => row).where((p) => p.type == PieceType.tiger)) {
-        if ((position.x - tiger.x).abs() <= 1 && (position.y - tiger.y).abs() <= 1) {
+      for (final tiger in board
+          .expand((row) => row)
+          .where((p) => p.type == PieceType.tiger)) {
+        if ((position.x - tiger.x).abs() <= 1 &&
+            (position.y - tiger.y).abs() <= 1) {
           int dx = position.x - tiger.x;
           int dy = position.y - tiger.y;
           int jumpX = position.x + dx;
@@ -877,17 +882,29 @@ class GameController extends ChangeNotifier {
     Point position, {
     bool log = false,
   }) {
-    for (final tiger in boardState.expand((row) => row).where((p) => p.type == PieceType.tiger)) {
-      if ((position.x - tiger.x).abs() <= 1 && (position.y - tiger.y).abs() <= 1) {
+    for (final tiger in boardState
+        .expand((row) => row)
+        .where((p) => p.type == PieceType.tiger)) {
+      if ((position.x - tiger.x).abs() <= 1 &&
+          (position.y - tiger.y).abs() <= 1) {
         int dx = position.x - tiger.x;
         int dy = position.y - tiger.y;
         int jumpX = position.x + dx;
         int jumpY = position.y + dy;
-        if (jumpX >= 0 && jumpX < boardState.length && jumpY >= 0 && jumpY < boardState[0].length) {
+        if (jumpX >= 0 &&
+            jumpX < boardState.length &&
+            jumpY >= 0 &&
+            jumpY < boardState[0].length) {
           if (boardState[jumpX][jumpY].type == PieceType.empty) {
-            if (!_isStrategicBlockOn(boardState, position, Point(x: jumpX, y: jumpY))) {
+            if (!_isStrategicBlockOn(
+              boardState,
+              position,
+              Point(x: jumpX, y: jumpY),
+            )) {
               if (log) {
-                debugPrint("Position ${position.x}, ${position.y} is unsafe due to tiger at ${tiger.x}, ${tiger.y}");
+                debugPrint(
+                  "Position ${position.x}, ${position.y} is unsafe due to tiger at ${tiger.x}, ${tiger.y}",
+                );
               }
               return false;
             }
@@ -906,16 +923,12 @@ class GameController extends ChangeNotifier {
       if (goatPosition.adjacentPoints.contains(tiger)) {
         for (final landing in goatPosition.adjacentPoints) {
           if (landing == tiger || landing.type != PieceType.empty) continue;
-          final key = '${tiger.id},${goatPosition.id},${landing.id}';
-          if (aadu.AaduPuliLogic.isJumpTriple(key)) {
-            return false;
-          }
+         
         }
       }
     }
     return true;
   }
-
 
   int _randomInt(int max) => Random().nextInt(max);
   Map<String, Point> _selectMoveBasedOnDifficulty(
@@ -928,9 +941,13 @@ class GameController extends ChangeNotifier {
     return moves[_randomInt(moves.length)];
   }
 
-  Map<String, Point> _selectTigerMoveByDifficulty(List<Map<String, Point>> moves) {
-    final List<Map<String, Point>> captureMoves = moves.where((m) => _isTigerCaptureMove(m)).toList();
-    final List<Map<String, Point>> normalMoves = moves.where((m) => !_isTigerCaptureMove(m)).toList();
+  Map<String, Point> _selectTigerMoveByDifficulty(
+    List<Map<String, Point>> moves,
+  ) {
+    final List<Map<String, Point>> captureMoves =
+        moves.where((m) => _isTigerCaptureMove(m)).toList();
+    final List<Map<String, Point>> normalMoves =
+        moves.where((m) => !_isTigerCaptureMove(m)).toList();
 
     switch (difficulty) {
       case Difficulty.easy:
@@ -951,11 +968,17 @@ class GameController extends ChangeNotifier {
     }
   }
 
-  Map<String, Point> _bestTigerMoveByHeuristic(List<Map<String, Point>> moves, {required bool unbeatableBias}) {
+  Map<String, Point> _bestTigerMoveByHeuristic(
+    List<Map<String, Point>> moves, {
+    required bool unbeatableBias,
+  }) {
     Map<String, Point>? bestMove;
     double bestScore = double.negativeInfinity;
     for (final m in moves) {
-      final double score = _evaluateTigerMove(m, unbeatableBias: unbeatableBias);
+      final double score = _evaluateTigerMove(
+        m,
+        unbeatableBias: unbeatableBias,
+      );
       if (score > bestScore) {
         bestScore = score;
         bestMove = m;
@@ -981,26 +1004,24 @@ class GameController extends ChangeNotifier {
       final to = b[move['to']!.x][move['to']!.y];
       square.SquareBoardLogic.executeMove(from, to, b);
       final movedTiger = to;
-      final mobility = square.SquareBoardLogic.getValidMoves(movedTiger, b).length;
+      final mobility =
+          square.SquareBoardLogic.getValidMoves(movedTiger, b).length;
       return mobility == 0;
     } else if (boardConfig != null) {
-      final cfg = _cloneAaduPuliConfig(boardConfig!);
-      final from = cfg.nodes.firstWhere((n) => n.id == move['from']!.id);
-      final to = cfg.nodes.firstWhere((n) => n.id == move['to']!.id);
-      aadu.AaduPuliLogic.executeMove(from, to, cfg);
-      final movedTiger = to;
-      final mobility = aadu.AaduPuliLogic.getValidMoves(movedTiger, cfg).length;
-      return mobility == 0;
+     
     }
     return false;
   }
 
-  double _evaluateTigerMove(Map<String, Point> move, {required bool unbeatableBias}) {
+  double _evaluateTigerMove(
+    Map<String, Point> move, {
+    required bool unbeatableBias,
+  }) {
     int goatsCaptured = _isTigerCaptureMove(move) ? 1 : 0;
     int tigerMobility = 0;
     int goatsInDanger = 0;
     int tigersBlocked = 0;
-    int trapRisk = 0; 
+    int trapRisk = 0;
     double centerBonus = 0.0;
 
     if (boardType == BoardType.square) {
@@ -1011,7 +1032,9 @@ class GameController extends ChangeNotifier {
 
       tigerMobility = _calculateTigerMobility(b);
 
-      for (final tiger in b.expand((row) => row).where((p) => p.type == PieceType.tiger)) {
+      for (final tiger in b
+          .expand((row) => row)
+          .where((p) => p.type == PieceType.tiger)) {
         for (final adj in tiger.adjacentPoints) {
           if (adj.type != PieceType.goat) continue;
           final dx = adj.x - tiger.x;
@@ -1020,7 +1043,8 @@ class GameController extends ChangeNotifier {
           final ly = adj.y + dy;
           if (lx >= 0 && lx < 5 && ly >= 0 && ly < 5) {
             final landing = b[lx][ly];
-            if (landing.type == PieceType.empty && adj.adjacentPoints.contains(landing)) {
+            if (landing.type == PieceType.empty &&
+                adj.adjacentPoints.contains(landing)) {
               goatsInDanger++;
             }
           }
@@ -1030,7 +1054,8 @@ class GameController extends ChangeNotifier {
       tigersBlocked = _countBlockedTigersOn(b);
 
       final movedTiger = to;
-      final movedMobility = square.SquareBoardLogic.getValidMoves(movedTiger, b).length;
+      final movedMobility =
+          square.SquareBoardLogic.getValidMoves(movedTiger, b).length;
       trapRisk = movedMobility == 0 ? 1 : 0;
 
       final cx = 2;
@@ -1041,28 +1066,31 @@ class GameController extends ChangeNotifier {
       centerBonus = -dist2;
     } else if (boardConfig != null) {
       final cfg = _cloneAaduPuliConfig(boardConfig!);
-      final from = cfg.nodes.firstWhere((n) => n.id == move['from']!.id);
       final to = cfg.nodes.firstWhere((n) => n.id == move['to']!.id);
-      aadu.AaduPuliLogic.executeMove(from, to, cfg);
 
       tigerMobility = _calculateTigerMobilityConfig(cfg);
 
       for (final tiger in cfg.nodes.where((n) => n.type == PieceType.tiger)) {
-        for (final goat in tiger.adjacentPoints.where((p) => p.type == PieceType.goat)) {
+        for (final goat in tiger.adjacentPoints.where(
+          (p) => p.type == PieceType.goat,
+        )) {
           for (final landing in goat.adjacentPoints) {
             if (landing == tiger || landing.type != PieceType.empty) continue;
-            final key = '${tiger.id},${goat.id},${landing.id}';
-            if (aadu.AaduPuliLogic.isJumpTriple(key)) goatsInDanger++;
           }
         }
       }
 
-      tigersBlocked = _areAllTigersBlockedOnConfig(cfg) ? cfg.nodes.where((n) => n.type == PieceType.tiger).length :
-        cfg.nodes.where((n) => n.type == PieceType.tiger && aadu.AaduPuliLogic.getValidMoves(n, cfg).isEmpty).length;
+      tigersBlocked =
+          _areAllTigersBlockedOnConfig(cfg)
+              ? cfg.nodes.where((n) => n.type == PieceType.tiger).length
+              : cfg.nodes
+                  .where(
+                    (n) =>
+                        n.type == PieceType.tiger 
+                  )
+                  .length;
 
       final movedTiger = to;
-      final movedMobility = aadu.AaduPuliLogic.getValidMoves(movedTiger, cfg).length;
-      trapRisk = movedMobility == 0 ? 1 : 0;
 
       centerBonus = movedTiger.adjacentPoints.length.toDouble();
     }
@@ -1074,7 +1102,7 @@ class GameController extends ChangeNotifier {
     score -= tigersBlocked * 50.0;
     if (unbeatableBias) {
       score -= trapRisk * 9999.0;
-      if (_isTigerCaptureMove(move)) score += 200.0; 
+      if (_isTigerCaptureMove(move)) score += 200.0;
       score += centerBonus * 5.0;
     } else {
       score += centerBonus * 1.0;
@@ -1091,11 +1119,12 @@ class GameController extends ChangeNotifier {
       return;
     }
 
-
     point.type = PieceType.goat;
     if (gameMode == GameMode.pvc) {
       final controller = goatPlayer == PlayerType.computer ? 'AI' : 'Human';
-      debugPrint("[confirm] Goat placed at ${point.x}, ${point.y} by $controller");
+      debugPrint(
+        "[confirm] Goat placed at ${point.x}, ${point.y} by $controller",
+      );
     }
     placedGoats++;
     if (placedGoats < maxGoats) {
@@ -1142,21 +1171,19 @@ class GameController extends ChangeNotifier {
     if (boardType == BoardType.square) {
       return square.SquareBoardLogic.getValidMoves(piece, board);
     } else if (boardConfig != null) {
-      return aadu.AaduPuliLogic.getValidMoves(piece, boardConfig!);
     }
     return [];
   }
 
   void _executeMove(Point from, Point to) {
-    final moverType = from.type; 
+    final moverType = from.type;
     var result =
         boardType == BoardType.square
             ? square.SquareBoardLogic.executeMove(from, to, board)
-            : aadu.AaduPuliLogic.executeMove(from, to, boardConfig!);
+            : null; 
 
     if (result == square.MoveResult.capture ||
-        result == square.MoveResult.captureWithMoreJumps ||
-        result == aadu.MoveResult.capture) {
+        result == square.MoveResult.captureWithMoreJumps ) {
       capturedGoats++;
       selectedPiece = null;
       validMoves = [];
@@ -1166,11 +1193,14 @@ class GameController extends ChangeNotifier {
     }
     if (gameMode == GameMode.pvc) {
       final isTigerMove = moverType == PieceType.tiger;
-      final controller = isTigerMove
-          ? (tigerPlayer == PlayerType.computer ? 'AI' : 'Human')
-          : (goatPlayer == PlayerType.computer ? 'AI' : 'Human');
+      final controller =
+          isTigerMove
+              ? (tigerPlayer == PlayerType.computer ? 'AI' : 'Human')
+              : (goatPlayer == PlayerType.computer ? 'AI' : 'Human');
       final side = isTigerMove ? 'Tiger' : 'Goat';
-      debugPrint('[confirm] $controller $side moved from ${from.x}, ${from.y} to ${to.x}, ${to.y}');
+      debugPrint(
+        '[confirm] $controller $side moved from ${from.x}, ${from.y} to ${to.x}, ${to.y}',
+      );
     }
     if (moverType == PieceType.goat) {
       lastGoatMoveKey = '${from.x},${from.y}->${to.x},${to.y}';
@@ -1206,7 +1236,7 @@ class GameController extends ChangeNotifier {
       tigerPlayer = PlayerType.human;
       goatPlayer = PlayerType.human;
       playerSide = PlayerSide.tiger;
-      difficulty = Difficulty.easy; 
+      difficulty = Difficulty.easy;
     }
     debugPrint("Game Mode Set: $gameMode, Difficulty: $difficulty");
   }
@@ -1225,13 +1255,7 @@ class GameController extends ChangeNotifier {
         message = 'Goats win by blocking all the Tigers.';
       }
     } else if (boardType == BoardType.aaduPuli && boardConfig != null) {
-      if (aadu.AaduPuliLogic.checkTigerWin(capturedGoats)) {
-        win = true;
-        message = 'Tigers win the game by killing 5 goats.';
-      } else if (aadu.AaduPuliLogic.checkGoatWin(boardConfig!)) {
-        win = true;
-        message = 'Goats win by blocking all the Tigers.';
-      }
+     
     }
     if (win) {
       _showGameOver(message!);
@@ -1259,7 +1283,7 @@ class GameController extends ChangeNotifier {
     }
   }
 
-/*  void _playTurnAudio() {
+  /*  void _playTurnAudio() {
     final context = _findContext();
     if (context == null) return;
     final audio = Provider.of<BackgroundAudioProvider>(context, listen: false);
@@ -1278,233 +1302,8 @@ class GameController extends ChangeNotifier {
     }
   }*/
 
-  Map<String, Point> _minimaxMove(
-    List<Map<String, Point>> moves,
-    int depth,
-    bool maximizingPlayer,
-    double alpha,
-    double beta,
-  ) {
-    Map<String, Point>? bestMove;
-    double bestValue =
-        maximizingPlayer ? double.negativeInfinity : double.infinity;
 
-    for (final move in moves) {
-      var boardClone =
-          boardType == BoardType.square ? _cloneSquareBoard(board) : null;
-      var boardConfigClone =
-          boardType == BoardType.aaduPuli && boardConfig != null
-              ? _cloneAaduPuliConfig(boardConfig!)
-              : null;
-      int capturedGoatsClone = capturedGoats;
-      int placedGoatsClone = placedGoats;
-      PieceType currentTurnClone = currentTurn;
 
-      if (boardType == BoardType.square) {
-        square.SquareBoardLogic.executeMove(
-          move['from']!,
-          move['to']!,
-          boardClone!,
-        );
-      } else if (boardType == BoardType.aaduPuli && boardConfigClone != null) {
-        aadu.AaduPuliLogic.executeMove(
-          move['from']!,
-          move['to']!,
-          boardConfigClone,
-        );
-      }
-      bool isCapture = !_areAdjacent(move['from']!, move['to']!);
-      if (isCapture) capturedGoatsClone++;
-      PieceType nextTurn =
-          currentTurnClone == PieceType.tiger
-              ? PieceType.goat
-              : PieceType.tiger;
-
-      double value;
-      if (depth == 0) {
-        value = _evaluateBoardState(
-          boardType == BoardType.square ? boardClone : null,
-          boardType == BoardType.aaduPuli ? boardConfigClone : null,
-          capturedGoatsClone,
-          placedGoatsClone,
-          nextTurn,
-        );
-      } else {
-        List<Map<String, Point>> nextMoves = [];
-        if (boardType == BoardType.square && boardClone != null) {
-          for (var row in boardClone) {
-            for (var piece in row.where((p) => p.type == nextTurn)) {
-              final valid = square.SquareBoardLogic.getValidMoves(
-                piece,
-                boardClone,
-              );
-              for (var to in valid) {
-                nextMoves.add({'from': piece, 'to': to});
-              }
-            }
-          }
-        } else if (boardType == BoardType.aaduPuli &&
-            boardConfigClone != null) {
-          for (final piece in boardConfigClone.nodes.where(
-            (n) => n.type == nextTurn,
-          )) {
-            final valid = aadu.AaduPuliLogic.getValidMoves(
-              piece,
-              boardConfigClone,
-            );
-            for (final to in valid) {
-              nextMoves.add({'from': piece, 'to': to});
-            }
-          }
-        }
-        if (nextMoves.isEmpty) {
-          value = _evaluateBoardState(
-            boardType == BoardType.square ? boardClone : null,
-            boardType == BoardType.aaduPuli ? boardConfigClone : null,
-            capturedGoatsClone,
-            placedGoatsClone,
-            nextTurn,
-          );
-        } else {
-          value = _minimaxValue(
-            nextMoves,
-            depth - 1,
-            !maximizingPlayer,
-            alpha,
-            beta,
-            boardClone,
-            boardConfigClone,
-            capturedGoatsClone,
-            placedGoatsClone,
-            nextTurn,
-          );
-        }
-      }
-      if (maximizingPlayer) {
-        if (value > bestValue) {
-          bestValue = value;
-          bestMove = move;
-        }
-        alpha = alpha > value ? alpha : value;
-        if (beta <= alpha) break;
-      } else {
-        if (value < bestValue) {
-          bestValue = value;
-          bestMove = move;
-        }
-        beta = beta < value ? beta : value;
-        if (beta <= alpha) break;
-      }
-    }
-    return bestMove ?? moves.first;
-  }
-
-  double _minimaxValue(
-    List<Map<String, Point>> moves,
-    int depth,
-    bool maximizingPlayer,
-    double alpha,
-    double beta,
-    List<List<Point>>? boardClone,
-    BoardConfig? boardConfigClone,
-    int capturedGoatsClone,
-    int placedGoatsClone,
-    PieceType currentTurnClone,
-  ) {
-    double bestValue =
-        maximizingPlayer ? double.negativeInfinity : double.infinity;
-    for (final move in moves) {
-      var bClone =
-          boardType == BoardType.square
-              ? _cloneSquareBoard(boardClone ?? board)
-              : null;
-      var bcClone =
-          boardType == BoardType.aaduPuli && boardConfigClone != null
-              ? _cloneAaduPuliConfig(boardConfigClone)
-              : null;
-      int cgClone = capturedGoatsClone;
-      int pgClone = placedGoatsClone;
-      if (boardType == BoardType.square && bClone != null) {
-        square.SquareBoardLogic.executeMove(move['from']!, move['to']!, bClone);
-      } else if (boardType == BoardType.aaduPuli && bcClone != null) {
-        aadu.AaduPuliLogic.executeMove(move['from']!, move['to']!, bcClone);
-      }
-      bool isCapture = !_areAdjacent(move['from']!, move['to']!);
-      if (isCapture) cgClone++;
-      PieceType nextTurn =
-          currentTurnClone == PieceType.tiger
-              ? PieceType.goat
-              : PieceType.tiger;
-      double value;
-      if (depth == 0) {
-        value = _evaluateBoardState(
-          boardType == BoardType.square ? bClone : null,
-          boardType == BoardType.aaduPuli ? bcClone : null,
-          cgClone,
-          pgClone,
-          nextTurn,
-        );
-      } else {
-        List<Map<String, Point>> nextMoves = [];
-        if (boardType == BoardType.square && bClone != null) {
-          for (var row in bClone) {
-            for (var piece in row.where((p) => p.type == nextTurn)) {
-              final valid = square.SquareBoardLogic.getValidMoves(
-                piece,
-                bClone,
-              );
-              for (var to in valid) {
-                nextMoves.add({'from': piece, 'to': to});
-              }
-            }
-          }
-        } else if (boardType == BoardType.aaduPuli && bcClone != null) {
-          for (final piece in bcClone.nodes.where((n) => n.type == nextTurn)) {
-            final valid = aadu.AaduPuliLogic.getValidMoves(piece, bcClone);
-            for (final to in valid) {
-              nextMoves.add({'from': piece, 'to': to});
-            }
-          }
-        }
-        if (nextMoves.isEmpty) {
-          value = _evaluateBoardState(
-            boardType == BoardType.square ? bClone : null,
-            boardType == BoardType.aaduPuli ? bcClone : null,
-            cgClone,
-            pgClone,
-            nextTurn,
-          );
-        } else {
-          value = _minimaxValue(
-            nextMoves,
-            depth - 1,
-            !maximizingPlayer,
-            alpha,
-            beta,
-            bClone,
-            bcClone,
-            cgClone,
-            pgClone,
-            nextTurn,
-          );
-        }
-      }
-      if (maximizingPlayer) {
-        if (value > bestValue) {
-          bestValue = value;
-        }
-        alpha = alpha > value ? alpha : value;
-        if (beta <= alpha) break;
-      } else {
-        if (value < bestValue) {
-          bestValue = value;
-        }
-        beta = beta < value ? beta : value;
-        if (beta <= alpha) break;
-      }
-    }
-    return bestValue;
-  }
 
   List<List<Point>> _cloneSquareBoard(List<List<Point>> original) {
     var points = List.generate(
@@ -1549,128 +1348,16 @@ class GameController extends ChangeNotifier {
     return BoardConfig(nodes: nodes, connections: original.connections);
   }
 
-  double _evaluateBoardState(
-    List<List<Point>>? boardEval,
-    BoardConfig? configEval,
-    int capturedGoatsEval,
-    int placedGoatsEval,
-    PieceType turnEval,
-  ) {
-    if (boardType == BoardType.square && boardEval != null) {
-      int tigersBlocked =
-          boardEval
-              .expand((row) => row)
-              .where(
-                (p) =>
-                    p.type == PieceType.tiger &&
-                    square.SquareBoardLogic.getValidMoves(p, boardEval).isEmpty,
-              )
-              .length;
-      int goatsCaptured = capturedGoatsEval;
-      int goatsAdjacentToTiger =
-          boardEval
-              .expand((row) => row)
-              .where(
-                (p) =>
-                    p.type == PieceType.goat &&
-                    p.adjacentPoints.any((adj) => adj.type == PieceType.tiger),
-              )
-              .length;
-      int availableTigerMoves = boardEval
-          .expand((row) => row)
-          .where((p) => p.type == PieceType.tiger)
-          .fold(
-            0,
-            (sum, tiger) =>
-                sum +
-                square.SquareBoardLogic.getValidMoves(tiger, boardEval).length,
-          );
-      if (turnEval == PieceType.goat) {
-        return _evaluateGoatState(
-          tigersBlocked,
-          goatsCaptured,
-          goatsAdjacentToTiger,
-        ).toDouble();
-      } else {
-        return _evaluateTigerState(
-          goatsCaptured,
-          tigersBlocked,
-          availableTigerMoves,
-        ).toDouble();
-      }
-    } else if (boardType == BoardType.aaduPuli && configEval != null) {
-      int tigersBlocked =
-          configEval.nodes
-              .where(
-                (p) =>
-                    p.type == PieceType.tiger &&
-                    aadu.AaduPuliLogic.getValidMoves(p, configEval).isEmpty,
-              )
-              .length;
-      int goatsCaptured = capturedGoatsEval;
-      int goatsAdjacentToTiger =
-          configEval.nodes
-              .where(
-                (p) =>
-                    p.type == PieceType.goat &&
-                    p.adjacentPoints.any((adj) => adj.type == PieceType.tiger),
-              )
-              .length;
-      int availableTigerMoves = configEval.nodes
-          .where((p) => p.type == PieceType.tiger)
-          .fold(
-            0,
-            (sum, tiger) =>
-                sum +
-                aadu.AaduPuliLogic.getValidMoves(tiger, configEval).length,
-          );
-      if (turnEval == PieceType.goat) {
-        return _evaluateGoatState(
-          tigersBlocked,
-          goatsCaptured,
-          goatsAdjacentToTiger,
-        ).toDouble();
-      } else {
-        return _evaluateTigerState(
-          goatsCaptured,
-          tigersBlocked,
-          availableTigerMoves,
-        ).toDouble();
-      }
-    }
-    return 0.0;
-  }
 
-  double _evaluateGoatState(
-    int tigersBlocked,
-    int goatsCaptured,
-    int goatsAdjacentToTiger,
-  ) {
-    return (tigersBlocked * 5) -
-        (goatsCaptured * 3) +
-        (goatsAdjacentToTiger * 2);
-  }
 
-  double _evaluateTigerState(
-    int goatsCaptured,
-    int tigersBlocked,
-    int availableMoves,
-  ) {
-    return (goatsCaptured * 5) - (tigersBlocked * 4) + (availableMoves * 2);
-  }
-
-  bool _areAllTigersBlocked() {
-    for (var tiger in board.expand((row) => row).where((p) => p.type == PieceType.tiger)) {
-      if (square.SquareBoardLogic.getValidMoves(tiger, board).isNotEmpty) {
-        return false;
-      }
-    }
-    return true;
-  }
 
   bool _areAllTigersBlockedOn(List<List<Point>> boardState) {
-    for (var tiger in boardState.expand((row) => row).where((p) => p.type == PieceType.tiger)) {
-      if (square.SquareBoardLogic.getValidMoves(tiger, boardState).isNotEmpty) return false;
+    for (var tiger in boardState
+        .expand((row) => row)
+        .where((p) => p.type == PieceType.tiger)) {
+      if (square.SquareBoardLogic.getValidMoves(tiger, boardState).isNotEmpty) {
+        return false;
+      }
     }
     return true;
   }
@@ -1680,14 +1367,15 @@ class GameController extends ChangeNotifier {
     final int tigerMobility = _calculateTigerMobility(boardState);
     final int unsafeGoats = _countUnsafeGoatsOn(boardState);
     final int goatsNearEdges = _countGoatsNearEdgesOn(boardState);
-    final int goatsCapturedNow = capturedGoats; 
+    final int goatsCapturedNow = capturedGoats;
 
     final int goatConnectivity = _goatConnectivityOn(boardState);
 
     final bool inPlacementPhase = !isGoatMovementPhase;
     final bool earlyPlacement = inPlacementPhase && placedGoats <= 12;
     final double edgesWeight = earlyPlacement ? 20.0 : 6.0;
-    final double connectivityWeight = inPlacementPhase && !earlyPlacement ? 10.0 : 8.0;
+    final double connectivityWeight =
+        inPlacementPhase && !earlyPlacement ? 10.0 : 8.0;
 
     final double score =
         500.0 * blockedTigers +
@@ -1699,7 +1387,6 @@ class GameController extends ChangeNotifier {
 
     return score;
   }
-
 
   void cancelComputerMoveTimer() {
     _computerMoveTimer?.cancel();
@@ -1772,27 +1459,23 @@ class GameController extends ChangeNotifier {
       }
       return true;
     } else if (boardConfig != null) {
-      for (var goat in boardConfig!.nodes.where(
-        (n) => n.type == PieceType.goat,
-      )) {
-        if (aadu.AaduPuliLogic.getValidMoves(goat, boardConfig!).isNotEmpty) {
-          return false;
-        }
-      }
+     
       return true;
     }
     return false;
   }
 
   bool _tigerCanCaptureAfter(List<List<Point>> boardState, Point goatPosition) {
-    for (var tiger in boardState.expand((row) => row).where((p) => p.type == PieceType.tiger)) {
+    for (var tiger in boardState
+        .expand((row) => row)
+        .where((p) => p.type == PieceType.tiger)) {
       var tigerMoves = square.SquareBoardLogic.getValidMoves(tiger, boardState);
       for (var move in tigerMoves) {
         if ((move.x - tiger.x).abs() == 2 || (move.y - tiger.y).abs() == 2) {
           int midX = (tiger.x + move.x) ~/ 2;
           int midY = (tiger.y + move.y) ~/ 2;
           if (midX == goatPosition.x && midY == goatPosition.y) {
-            return true; 
+            return true;
           }
         }
       }
@@ -1802,12 +1485,14 @@ class GameController extends ChangeNotifier {
 
   int _calculateTigerMobility(List<List<Point>> boardState) {
     int mobility = 0;
-    for (var tiger in boardState.expand((row) => row).where((p) => p.type == PieceType.tiger)) {
-      mobility += square.SquareBoardLogic.getValidMoves(tiger, boardState).length;
+    for (var tiger in boardState
+        .expand((row) => row)
+        .where((p) => p.type == PieceType.tiger)) {
+      mobility +=
+          square.SquareBoardLogic.getValidMoves(tiger, boardState).length;
     }
     return mobility;
   }
-
 
   double _clusterBonus(List<List<Point>> boardState, Point goatPosition) {
     return goatPosition.adjacentPoints
@@ -1816,11 +1501,14 @@ class GameController extends ChangeNotifier {
         .toDouble();
   }
 
-
-
-  double _calculateBlockScoreForBoard(List<List<Point>> boardState, Point goatPosition) {
+  double _calculateBlockScoreForBoard(
+    List<List<Point>> boardState,
+    Point goatPosition,
+  ) {
     double score = 0.0;
-    for (var tiger in boardState.expand((row) => row).where((p) => p.type == PieceType.tiger)) {
+    for (var tiger in boardState
+        .expand((row) => row)
+        .where((p) => p.type == PieceType.tiger)) {
       var tigerMoves = square.SquareBoardLogic.getValidMoves(tiger, boardState);
       for (var move in tigerMoves) {
         if ((move.x - tiger.x).abs() == 2 || (move.y - tiger.y).abs() == 2) {
@@ -1842,11 +1530,14 @@ class GameController extends ChangeNotifier {
     return score;
   }
 
-
   int _countBlockedTigersOn(List<List<Point>> boardState) {
     int blocked = 0;
-    for (final tiger in boardState.expand((row) => row).where((p) => p.type == PieceType.tiger)) {
-      if (square.SquareBoardLogic.getValidMoves(tiger, boardState).isEmpty) blocked++;
+    for (final tiger in boardState
+        .expand((row) => row)
+        .where((p) => p.type == PieceType.tiger)) {
+      if (square.SquareBoardLogic.getValidMoves(tiger, boardState).isEmpty) {
+        blocked++;
+      }
     }
     return blocked;
   }
@@ -1854,17 +1545,21 @@ class GameController extends ChangeNotifier {
   List<Point> _predictNextTurnLandingBlocksSquare() {
     final Set<String> seen = {};
     final List<Point> result = [];
-    for (final tiger in board.expand((row) => row).where((p) => p.type == PieceType.tiger)) {
+    for (final tiger in board
+        .expand((row) => row)
+        .where((p) => p.type == PieceType.tiger)) {
       final moves = square.SquareBoardLogic.getValidMoves(tiger, board);
       for (final dest in moves) {
-        if ((dest.x - tiger.x).abs() == 2 || (dest.y - tiger.y).abs() == 2) continue;
+        if ((dest.x - tiger.x).abs() == 2 || (dest.y - tiger.y).abs() == 2) {
+          continue;
+        }
         final tb = _cloneSquareBoard(board);
         final tf = tb[tiger.x][tiger.y];
         final tt = tb[dest.x][dest.y];
         tf.type = PieceType.empty;
         tt.type = PieceType.tiger;
         final futureThreats = _getCurrentJumpThreatsOn(tb);
-               for (final thr in futureThreats) {
+        for (final thr in futureThreats) {
           final lx = thr.landing.x;
           final ly = thr.landing.y;
           if (board[lx][ly].type != PieceType.empty) continue;
@@ -1880,10 +1575,14 @@ class GameController extends ChangeNotifier {
 
   int _countNextTurnJumpThreatsOn(List<List<Point>> boardState) {
     int total = 0;
-    for (final tiger in boardState.expand((row) => row).where((p) => p.type == PieceType.tiger)) {
+    for (final tiger in boardState
+        .expand((row) => row)
+        .where((p) => p.type == PieceType.tiger)) {
       final moves = square.SquareBoardLogic.getValidMoves(tiger, boardState);
       for (final dest in moves) {
-        if ((dest.x - tiger.x).abs() == 2 || (dest.y - tiger.y).abs() == 2) continue;
+        if ((dest.x - tiger.x).abs() == 2 || (dest.y - tiger.y).abs() == 2) {
+          continue;
+        }
         final tb = _cloneSquareBoard(boardState);
         final tf = tb[tiger.x][tiger.y];
         final tt = tb[dest.x][dest.y];
@@ -1897,7 +1596,9 @@ class GameController extends ChangeNotifier {
 
   List<_JumpThreat> _getCurrentJumpThreatsOn(List<List<Point>> boardState) {
     final threats = <_JumpThreat>[];
-    for (final tiger in boardState.expand((row) => row).where((p) => p.type == PieceType.tiger)) {
+    for (final tiger in boardState
+        .expand((row) => row)
+        .where((p) => p.type == PieceType.tiger)) {
       for (final adj in tiger.adjacentPoints) {
         if (adj.type != PieceType.goat) continue;
         final dx = adj.x - tiger.x;
@@ -1906,8 +1607,11 @@ class GameController extends ChangeNotifier {
         final ly = adj.y + dy;
         if (lx >= 0 && lx < 5 && ly >= 0 && ly < 5) {
           final landing = boardState[lx][ly];
-          if (landing.type == PieceType.empty && adj.adjacentPoints.contains(landing)) {
-            threats.add(_JumpThreat(tiger: tiger, victim: adj, landing: landing));
+          if (landing.type == PieceType.empty &&
+              adj.adjacentPoints.contains(landing)) {
+            threats.add(
+              _JumpThreat(tiger: tiger, victim: adj, landing: landing),
+            );
           }
         }
       }
@@ -1917,7 +1621,9 @@ class GameController extends ChangeNotifier {
 
   int _countUnsafeGoatsOn(List<List<Point>> boardState) {
     int count = 0;
-    for (final goat in boardState.expand((row) => row).where((p) => p.type == PieceType.goat)) {
+    for (final goat in boardState
+        .expand((row) => row)
+        .where((p) => p.type == PieceType.goat)) {
       if (!_isGoatPositionSafeOn(boardState, goat, log: false)) count++;
     }
     return count;
@@ -1937,7 +1643,9 @@ class GameController extends ChangeNotifier {
   int _goatConnectivityOn(List<List<Point>> boardState) {
     int connections = 0;
     final seen = <String>{};
-    for (final goat in boardState.expand((row) => row).where((p) => p.type == PieceType.goat)) {
+    for (final goat in boardState
+        .expand((row) => row)
+        .where((p) => p.type == PieceType.goat)) {
       for (final adj in goat.adjacentPoints) {
         if (adj.type != PieceType.goat) continue;
         final a = '${goat.x},${goat.y}';
@@ -1951,14 +1659,16 @@ class GameController extends ChangeNotifier {
 
   double _evaluateRisk(Point point) {
     double risk = 0.0;
-    for (var tiger in board.expand((row) => row).where((p) => p.type == PieceType.tiger)) {
+    for (var tiger in board
+        .expand((row) => row)
+        .where((p) => p.type == PieceType.tiger)) {
       var tigerMoves = square.SquareBoardLogic.getValidMoves(tiger, board);
       for (var move in tigerMoves) {
         if ((move.x - tiger.x).abs() == 2 || (move.y - tiger.y).abs() == 2) {
           int midX = (tiger.x + move.x) ~/ 2;
           int midY = (tiger.y + move.y) ~/ 2;
           if (midX == point.x && midY == point.y) {
-            risk += 100.0; 
+            risk += 100.0;
           }
         }
       }
@@ -1966,18 +1676,29 @@ class GameController extends ChangeNotifier {
     return risk;
   }
 
-  bool _goatIsSafeForOneTigerStep(List<List<Point>> boardState, Point goatPosition) {
-    if (!_isGoatPositionSafeOn(boardState, goatPosition, log: false)) return false;
-    for (final tiger in boardState.expand((row) => row).where((p) => p.type == PieceType.tiger)) {
+  bool _goatIsSafeForOneTigerStep(
+    List<List<Point>> boardState,
+    Point goatPosition,
+  ) {
+    if (!_isGoatPositionSafeOn(boardState, goatPosition, log: false)) {
+      return false;
+    }
+    for (final tiger in boardState
+        .expand((row) => row)
+        .where((p) => p.type == PieceType.tiger)) {
       final moves = square.SquareBoardLogic.getValidMoves(tiger, boardState);
       for (final dest in moves) {
-        if ((dest.x - tiger.x).abs() == 2 || (dest.y - tiger.y).abs() == 2) continue;
+        if ((dest.x - tiger.x).abs() == 2 || (dest.y - tiger.y).abs() == 2) {
+          continue;
+        }
         final tb = _cloneSquareBoard(boardState);
         final tf = tb[tiger.x][tiger.y];
         final tt = tb[dest.x][dest.y];
         tf.type = PieceType.empty;
         tt.type = PieceType.tiger;
-        for (final t2 in tb.expand((row) => row).where((p) => p.type == PieceType.tiger)) {
+        for (final t2 in tb
+            .expand((row) => row)
+            .where((p) => p.type == PieceType.tiger)) {
           final tMoves = square.SquareBoardLogic.getValidMoves(t2, tb);
           for (final m in tMoves) {
             if ((m.x - t2.x).abs() == 2 || (m.y - t2.y).abs() == 2) {
@@ -1996,13 +1717,18 @@ class GameController extends ChangeNotifier {
 
   double _evaluateBoardStateForGoatsUnbeatable(List<List<Point>> boardState) {
     final int blockedTigers = _countBlockedTigersOn(boardState);
-    final int goatsAlive = boardState.expand((row) => row).where((p) => p.type == PieceType.goat).length;
-    final int tigersInCorner = [
-      boardState[0][0],
-      boardState[0][boardState[0].length - 1],
-      boardState[boardState.length - 1][0],
-      boardState[boardState.length - 1][boardState[0].length - 1],
-    ].where((p) => p.type == PieceType.tiger).length;
+    final int goatsAlive =
+        boardState
+            .expand((row) => row)
+            .where((p) => p.type == PieceType.goat)
+            .length;
+    final int tigersInCorner =
+        [
+          boardState[0][0],
+          boardState[0][boardState[0].length - 1],
+          boardState[boardState.length - 1][0],
+          boardState[boardState.length - 1][boardState[0].length - 1],
+        ].where((p) => p.type == PieceType.tiger).length;
     final bool anyGoatInDanger = _countUnsafeGoatsOn(boardState) > 0;
     final int goatsCapturedNow = capturedGoats;
     final double score =
@@ -2013,10 +1739,13 @@ class GameController extends ChangeNotifier {
         (goatsCapturedNow > 0 ? -9999.0 * goatsCapturedNow : 0.0);
     return score;
   }
+
   List<_JumpThreat> _getCurrentJumpThreats() {
     final threats = <_JumpThreat>[];
     if (boardType == BoardType.square) {
-      for (var tiger in board.expand((row) => row).where((p) => p.type == PieceType.tiger)) {
+      for (var tiger in board
+          .expand((row) => row)
+          .where((p) => p.type == PieceType.tiger)) {
         for (final adj in tiger.adjacentPoints) {
           if (adj.type != PieceType.goat) continue;
           final dx = adj.x - tiger.x;
@@ -2025,21 +1754,25 @@ class GameController extends ChangeNotifier {
           final ly = adj.y + dy;
           if (lx >= 0 && lx < 5 && ly >= 0 && ly < 5) {
             final landing = board[lx][ly];
-            if (landing.type == PieceType.empty && adj.adjacentPoints.contains(landing)) {
-              threats.add(_JumpThreat(tiger: tiger, victim: adj, landing: landing));
+            if (landing.type == PieceType.empty &&
+                adj.adjacentPoints.contains(landing)) {
+              threats.add(
+                _JumpThreat(tiger: tiger, victim: adj, landing: landing),
+              );
             }
           }
         }
       }
     } else if (boardConfig != null) {
-      for (final tiger in boardConfig!.nodes.where((n) => n.type == PieceType.tiger)) {
-        for (final goat in tiger.adjacentPoints.where((p) => p.type == PieceType.goat)) {
+      for (final tiger in boardConfig!.nodes.where(
+        (n) => n.type == PieceType.tiger,
+      )) {
+        for (final goat in tiger.adjacentPoints.where(
+          (p) => p.type == PieceType.goat,
+        )) {
           for (final landing in goat.adjacentPoints) {
             if (landing == tiger || landing.type != PieceType.empty) continue;
-            final key = '${tiger.id},${goat.id},${landing.id}';
-            if (aadu.AaduPuliLogic.isJumpTriple(key)) {
-              threats.add(_JumpThreat(tiger: tiger, victim: goat, landing: landing));
-            }
+            
           }
         }
       }
@@ -2049,7 +1782,9 @@ class GameController extends ChangeNotifier {
 
   int _countJumpThreatsOn(List<List<Point>> boardState) {
     int total = 0;
-    for (final tiger in boardState.expand((row) => row).where((p) => p.type == PieceType.tiger)) {
+    for (final tiger in boardState
+        .expand((row) => row)
+        .where((p) => p.type == PieceType.tiger)) {
       for (final adj in tiger.adjacentPoints) {
         if (adj.type != PieceType.goat) continue;
         final dx = adj.x - tiger.x;
@@ -2058,7 +1793,8 @@ class GameController extends ChangeNotifier {
         final ly = adj.y + dy;
         if (lx >= 0 && lx < 5 && ly >= 0 && ly < 5) {
           final landing = boardState[lx][ly];
-          if (landing.type == PieceType.empty && adj.adjacentPoints.contains(landing)) {
+          if (landing.type == PieceType.empty &&
+              adj.adjacentPoints.contains(landing)) {
             total++;
           }
         }
@@ -2070,13 +1806,12 @@ class GameController extends ChangeNotifier {
   int _countJumpThreatsOnConfig(BoardConfig cfg) {
     int total = 0;
     for (final tiger in cfg.nodes.where((n) => n.type == PieceType.tiger)) {
-      for (final goat in tiger.adjacentPoints.where((p) => p.type == PieceType.goat)) {
+      for (final goat in tiger.adjacentPoints.where(
+        (p) => p.type == PieceType.goat,
+      )) {
         for (final landing in goat.adjacentPoints) {
           if (landing == tiger || landing.type != PieceType.empty) continue;
-          final key = '${tiger.id},${goat.id},${landing.id}';
-          if (aadu.AaduPuliLogic.isJumpTriple(key)) {
-            total++;
-          }
+        
         }
       }
     }
@@ -2088,19 +1823,23 @@ class GameController extends ChangeNotifier {
   }
 
   double _clusterBonusConfig(BoardConfig cfg, Point goatPosition) {
-    return goatPosition.adjacentPoints.where((adj) => adj.type == PieceType.goat).length.toDouble();
+    return goatPosition.adjacentPoints
+        .where((adj) => adj.type == PieceType.goat)
+        .length
+        .toDouble();
   }
 
   int _calculateTigerMobilityConfig(BoardConfig cfg) {
     int mobility = 0;
-    for (final tiger in cfg.nodes.where((n) => n.type == PieceType.tiger)) {
-      mobility += aadu.AaduPuliLogic.getValidMoves(tiger, cfg).length;
-    }
+   
     return mobility;
   }
 
   bool _reducesTigerMobilityConfig(BoardConfig cfg, Point goatPosition) {
-    final initial = boardConfig != null ? _calculateTigerMobilityConfig(boardConfig!) : _calculateTigerMobilityConfig(cfg);
+    final initial =
+        boardConfig != null
+            ? _calculateTigerMobilityConfig(boardConfig!)
+            : _calculateTigerMobilityConfig(cfg);
     final reduced = _calculateTigerMobilityConfig(cfg);
     return reduced < initial;
   }
@@ -2108,13 +1847,12 @@ class GameController extends ChangeNotifier {
   double _calculateBlockScoreConfig(BoardConfig cfg, Point goatPosition) {
     double score = 0.0;
     for (final tiger in cfg.nodes.where((n) => n.type == PieceType.tiger)) {
-      for (final goat in tiger.adjacentPoints.where((p) => p.type == PieceType.goat)) {
+      for (final goat in tiger.adjacentPoints.where(
+        (p) => p.type == PieceType.goat,
+      )) {
         for (final landing in goat.adjacentPoints) {
           if (landing == tiger || landing.type != PieceType.empty) continue;
-          final key = '${tiger.id},${goat.id},${landing.id}';
-          if (aadu.AaduPuliLogic.isJumpTriple(key) && landing.id == goatPosition.id) {
-            score += 10.0;
-          }
+         
         }
       }
     }
@@ -2125,19 +1863,14 @@ class GameController extends ChangeNotifier {
     for (final tiger in cfg.nodes.where((n) => n.type == PieceType.tiger)) {
       for (final landing in goatPosition.adjacentPoints) {
         if (landing == tiger || landing.type != PieceType.empty) continue;
-        final key = '${tiger.id},${goatPosition.id},${landing.id}';
-        if (aadu.AaduPuliLogic.isJumpTriple(key)) {
-          return true;
-        }
+       
       }
     }
     return false;
   }
 
   bool _areAllTigersBlockedOnConfig(BoardConfig cfg) {
-    for (final tiger in cfg.nodes.where((n) => n.type == PieceType.tiger)) {
-      if (aadu.AaduPuliLogic.getValidMoves(tiger, cfg).isNotEmpty) return false;
-    }
+   
     return true;
   }
 }

@@ -28,7 +28,9 @@ class BoardSelectionScreen extends StatelessWidget {
           child: Card(
             color: Colors.black.withAlpha((0.5 * 255).toInt()),
             elevation: 8,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(24),
+            ),
             child: Padding(
               padding: const EdgeInsets.symmetric(vertical: 36, horizontal: 28),
               child: Column(
@@ -46,7 +48,9 @@ class BoardSelectionScreen extends StatelessWidget {
                       style: AppTextStyles.nebulaSubtitle(context),
                     ),
                     onTap: () {
-                      context.read<GameController>().setBoardType(BoardType.square);
+                      context.read<GameController>().setBoardType(
+                        BoardType.square,
+                      );
                       context.read<GameController>().setGameMode(
                         gameMode,
                         side: context.read<GameController>().playerSide,
@@ -71,7 +75,9 @@ class BoardSelectionScreen extends StatelessWidget {
                       style: AppTextStyles.nebulaSubtitle(context),
                     ),
                     onTap: () {
-                      context.read<GameController>().setBoardType(BoardType.aaduPuli);
+                      context.read<GameController>().setBoardType(
+                        BoardType.aaduPuli,
+                      );
                       context.read<GameController>().setGameMode(
                         gameMode,
                         side: context.read<GameController>().playerSide,

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 enum BoardType { square, aaduPuli }
+
 enum Difficulty { easy, medium, hard, unbeatable }
 
 class AppColors {
@@ -56,7 +57,7 @@ class AppTextStyles {
     return GoogleFonts.rajdhani(
       fontSize: 20,
       fontWeight: FontWeight.w600,
-    color: AppColors.starDust,
+      color: AppColors.starDust,
       shadows: [
         Shadow(
           color: AppColors.stellarGold.withAlpha((0.5 * 255).toInt()),
@@ -66,7 +67,6 @@ class AppTextStyles {
       ],
     );
   }
-
 
   static TextStyle starText(BuildContext context) {
     return GoogleFonts.spaceMono(

@@ -23,7 +23,8 @@ class AaduPuliBoard extends StatefulWidget {
   State<AaduPuliBoard> createState() => _AaduPuliBoardState();
 }
 
-class _AaduPuliBoardState extends State<AaduPuliBoard> with TickerProviderStateMixin {
+class _AaduPuliBoardState extends State<AaduPuliBoard>
+    with TickerProviderStateMixin {
   AnimationController? _moveController;
   AnimationController? _captureController;
   Offset? _fromPos;
@@ -62,11 +63,12 @@ class _AaduPuliBoardState extends State<AaduPuliBoard> with TickerProviderStateM
   }
 
   void _onPieceTap(piece.Point point) async {
-    if (_isAnimating) return; 
+    if (_isAnimating) return;
 
-    final isTigerJump = widget.selectedPiece?.type == piece.PieceType.tiger &&
-      widget.validMoves.contains(point) &&
-      !_areAdjacent(widget.selectedPiece!, point);
+    final isTigerJump =
+        widget.selectedPiece?.type == piece.PieceType.tiger &&
+        widget.validMoves.contains(point) &&
+        !_areAdjacent(widget.selectedPiece!, point);
 
     if (isTigerJump) {
       setState(() {
@@ -108,7 +110,7 @@ class _AaduPuliBoardState extends State<AaduPuliBoard> with TickerProviderStateM
         _capturedGoat = null;
       });
 
-      widget.onTap(point); 
+      widget.onTap(point);
     } else {
       widget.onTap(point);
     }
@@ -167,7 +169,9 @@ class _AaduPuliBoardState extends State<AaduPuliBoard> with TickerProviderStateM
                     margin + point.position!.dx * boardWidth,
                     margin + point.position!.dy * boardHeight,
                   );
-                  if (_isAnimating && _movingTiger == point && _moveController != null) {
+                  if (_isAnimating &&
+                      _movingTiger == point &&
+                      _moveController != null) {
                     final animation = Tween<Offset>(
                       begin: _fromPos!,
                       end: _toPos!,
@@ -191,7 +195,9 @@ class _AaduPuliBoardState extends State<AaduPuliBoard> with TickerProviderStateM
                       },
                     );
                   }
-                  if (_isAnimating && _capturedGoat == point && _captureController != null) {
+                  if (_isAnimating &&
+                      _capturedGoat == point &&
+                      _captureController != null) {
                     final animPos = Offset(
                       margin + point.position!.dx * boardWidth,
                       margin + point.position!.dy * boardHeight,
@@ -200,8 +206,10 @@ class _AaduPuliBoardState extends State<AaduPuliBoard> with TickerProviderStateM
                       left: animPos.dx - 21,
                       top: animPos.dy - 21,
                       child: FadeTransition(
-                        opacity: Tween<double>(begin: 1, end: 0)
-                            .animate(_captureController!),
+                        opacity: Tween<double>(
+                          begin: 1,
+                          end: 0,
+                        ).animate(_captureController!),
                         child: Image.asset(
                           'assets/images/goat.png',
                           width: 38,
@@ -228,8 +236,10 @@ class _AaduPuliBoardState extends State<AaduPuliBoard> with TickerProviderStateM
                   Positioned.fill(
                     child: Center(
                       child: FadeTransition(
-                        opacity: Tween<double>(begin: 1, end: 0.2)
-                            .animate(_captureController!),
+                        opacity: Tween<double>(
+                          begin: 1,
+                          end: 0.2,
+                        ).animate(_captureController!),
                         child: Image.asset(
                           'assets/images/tiger_jump_goat.png',
                           width: 180,
@@ -238,14 +248,15 @@ class _AaduPuliBoardState extends State<AaduPuliBoard> with TickerProviderStateM
                       ),
                     ),
                   ),
-                
+
                 if (_showBlood && _bloodPos != null && _bloodController != null)
                   Positioned(
                     left: _bloodPos!.dx - 28,
                     top: _bloodPos!.dy - 28,
                     child: FadeTransition(
-                      opacity: CurveTween(curve: Curves.easeInOut)
-                          .animate(_bloodController!),
+                      opacity: CurveTween(
+                        curve: Curves.easeInOut,
+                      ).animate(_bloodController!),
                       child: Image.asset(
                         'assets/images/blood_effect.png',
                         width: 65,
@@ -329,19 +340,20 @@ class _PieceImage extends StatelessWidget {
 
     return AnimatedSwitcher(
       duration: const Duration(milliseconds: 300),
-      child: point.type == piece.PieceType.tiger
-          ? Image.asset(
-              'assets/images/tiger.png',
-              width: 32,
-              height: 32,
-              key: ValueKey('tiger-${point.id}'),
-            )
-          : Image.asset(
-              'assets/images/goat.png',
-              width: 38,
-              height: 38,
-              key: ValueKey('goat-${point.id}'),
-            ),
+      child:
+          point.type == piece.PieceType.tiger
+              ? Image.asset(
+                'assets/images/tiger.png',
+                width: 32,
+                height: 32,
+                key: ValueKey('tiger-${point.id}'),
+              )
+              : Image.asset(
+                'assets/images/goat.png',
+                width: 38,
+                height: 38,
+                key: ValueKey('goat-${point.id}'),
+              ),
     );
   }
 }
@@ -356,10 +368,11 @@ class _AaduPuliPainter extends CustomPainter {
     final boardWidth = size.width - 2 * padding;
     final boardHeight = size.height - 2 * padding;
 
-    final linePaint = Paint()
-      ..color = Colors.yellow
-      ..strokeWidth = 5
-      ..style = PaintingStyle.stroke;
+    final linePaint =
+        Paint()
+          ..color = Colors.yellow
+          ..strokeWidth = 5
+          ..style = PaintingStyle.stroke;
 
     for (final conn in config.connections) {
       final start = Offset(

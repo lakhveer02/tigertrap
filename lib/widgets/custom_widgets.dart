@@ -22,11 +22,16 @@ class CosmicButton extends StatelessWidget {
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(16),
         gradient: LinearGradient(
-          colors: isActive ? [Colors.black38, Colors.black38] : [Colors.black54, Colors.black54],
+          colors:
+              isActive
+                  ? [Colors.black38, Colors.black38]
+                  : [Colors.black54, Colors.black54],
         ),
         boxShadow: [
           BoxShadow(
-            color: AppColors.stellarGold.withAlpha(isActive ? (0.4 * 255).toInt() : (0.2 * 255).toInt()),
+            color: AppColors.stellarGold.withAlpha(
+              isActive ? (0.4 * 255).toInt() : (0.2 * 255).toInt(),
+            ),
             blurRadius: isActive ? 15 : 8,
             spreadRadius: isActive ? 2 : 1,
           ),

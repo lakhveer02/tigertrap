@@ -31,9 +31,14 @@ class HomeScreen extends StatelessWidget {
                   Card(
                     color: Colors.black.withAlpha((0.5 * 255).toInt()),
                     elevation: 8,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(24),
+                    ),
                     child: Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 32, horizontal: 28),
+                      padding: const EdgeInsets.symmetric(
+                        vertical: 32,
+                        horizontal: 28,
+                      ),
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
@@ -41,7 +46,10 @@ class HomeScreen extends StatelessWidget {
                             text: 'New Game',
                             icon: Icons.play_circle_filled_rounded,
                             onPressed:
-                                () => _navigateTo(context, const GameModeScreen()),
+                                () => _navigateTo(
+                                  context,
+                                  const GameModeScreen(),
+                                ),
                           ),
                           const SizedBox(height: 20),
                           CosmicButton(
@@ -53,12 +61,20 @@ class HomeScreen extends StatelessWidget {
                           const SizedBox(height: 20),
                           Selector<BackgroundAudioProvider, bool>(
                             selector: (_, audio) => audio.isPlaying,
-                            builder: (context, isPlaying, _) => CosmicButton(
-                              text: isPlaying ? 'Play Music' : 'Music Off',
-                              icon: isPlaying ? Icons.volume_up_rounded : Icons.volume_off_rounded,
-                              onPressed: () => context.read<BackgroundAudioProvider>().toggle(),
-                              isActive: isPlaying,
-                            ),
+                            builder:
+                                (context, isPlaying, _) => CosmicButton(
+                                  text: isPlaying ? 'Play Music' : 'Music Off',
+                                  icon:
+                                      isPlaying
+                                          ? Icons.volume_up_rounded
+                                          : Icons.volume_off_rounded,
+                                  onPressed:
+                                      () =>
+                                          context
+                                              .read<BackgroundAudioProvider>()
+                                              .toggle(),
+                                  isActive: isPlaying,
+                                ),
                           ),
                         ],
                       ),
@@ -67,7 +83,6 @@ class HomeScreen extends StatelessWidget {
                 ],
               ),
             ),
-           
           ],
         ),
       ),

@@ -115,4 +115,5 @@ class SquareBoardLogic {
     return true;
   }
 }
+
 enum MoveResult { invalid, regular, capture, captureWithMoreJumps }

@@ -42,7 +42,8 @@ void main() async {
                 aaduPuliProvider.resetGame();
               }
             }
-            return aaduPuliProvider ?? AaduPuliProvider(BoardUtils.getAaduPuliConfig());
+            return aaduPuliProvider ??
+                AaduPuliProvider(BoardUtils.getAaduPuliConfig());
           },
         ),
       ],

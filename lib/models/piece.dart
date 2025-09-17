@@ -5,7 +5,7 @@ enum PieceType { goat, tiger, empty }
 class Point {
   final int x;
   final int y;
-  PieceType  type;
+  PieceType type;
   List<Point> adjacentPoints;
   final String? id;
   final Offset? position;

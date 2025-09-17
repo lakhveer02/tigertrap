@@ -284,7 +284,7 @@ class _BoardState extends State<Board> with TickerProviderStateMixin {
                     validMoves: aaduProvider.validMoves,
                     selectedPiece: aaduProvider.selectedPiece,
                     onTap: (point) {
-                      if (gameController.gameMode == GameMode.pvc && 
+                      if (gameController.gameMode == GameMode.pvc &&
                           gameController.isComputerTurn()) {
                         gameController.handlePointTap(point);
                       } else {

@@ -41,7 +41,6 @@ class _GameScreenState extends State<GameScreen> {
             });
           }
           if (controller.gameMessage == null && _dialogShown) {
-            // Reset flag when new game starts
             _dialogShown = false;
           }
           return Scaffold(
@@ -68,7 +67,9 @@ class _GameScreenState extends State<GameScreen> {
               centerTitle: true,
               actions: [
                 IconButton(
-                  icon: Icon(controller.isPaused ? Icons.play_arrow : Icons.pause),
+                  icon: Icon(
+                    controller.isPaused ? Icons.play_arrow : Icons.pause,
+                  ),
                   onPressed: () {
                     if (controller.isPaused) {
                       controller.resumeGame();
@@ -218,7 +219,6 @@ class _GameScreenState extends State<GameScreen> {
   }
 
   Widget _buildScorePanel(BuildContext context, GameController game) {
-    // Determine player labels
     String tigerLabel = 'Player 1';
     String goatLabel = 'Player 2';
     if (game.gameMode == GameMode.pvc) {
@@ -243,7 +243,9 @@ class _GameScreenState extends State<GameScreen> {
                 _PlayerLabel(label: tigerLabel),
                 const SizedBox(height: 4),
                 _PlayerScoreColumn(
-                  isComputer: game.gameMode == GameMode.pvc && game.tigerPlayer == PlayerType.computer,
+                  isComputer:
+                      game.gameMode == GameMode.pvc &&
+                      game.tigerPlayer == PlayerType.computer,
                   playerLabel: tigerLabel,
                   pieceLabel: 'Tiger',
                   imageAsset: 'assets/images/tiger.png',
@@ -264,7 +266,9 @@ class _GameScreenState extends State<GameScreen> {
                 _PlayerLabel(label: goatLabel),
                 const SizedBox(height: 4),
                 _PlayerScoreColumn(
-                  isComputer: game.gameMode == GameMode.pvc && game.goatPlayer == PlayerType.computer,
+                  isComputer:
+                      game.gameMode == GameMode.pvc &&
+                      game.goatPlayer == PlayerType.computer,
                   playerLabel: goatLabel,
                   pieceLabel: 'Goat',
                   imageAsset: 'assets/images/goat.png',
@@ -383,9 +387,9 @@ class _PlayerScoreColumn extends StatelessWidget {
             ),
             if (isComputer)
               Positioned(
-                top: 4,
-                right: 4,
-                child: Icon(Icons.computer, color: Colors.blue, size: 16),
+                top: 30,
+                left: 4,
+                child: Text('AI', style: TextStyle( fontSize: 14 , color: Colors.amber),) ,
               ),
           ],
         ),

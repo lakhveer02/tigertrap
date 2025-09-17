@@ -96,7 +96,7 @@ class AaduPuliProvider extends ChangeNotifier {
   }
 
   void _checkWinConditions() {
-    if (_gameMessage != null) return; 
+    if (_gameMessage != null) return;
 
     if (AaduPuliLogic.checkTigerWin(_capturedGoats)) {
       _gameMessage = 'Tigers Win!';
@@ -113,14 +113,16 @@ class AaduPuliProvider extends ChangeNotifier {
 
     if (result == MoveResult.capture) {
       _capturedGoats++;
-      _currentTurn = from.type == PieceType.tiger ? PieceType.goat : PieceType.tiger;
+      _currentTurn =
+          from.type == PieceType.tiger ? PieceType.goat : PieceType.tiger;
       _selectedPiece = null;
       _validMoves = [];
       notifyListeners();
       return false;
     }
 
-    _currentTurn = from.type == PieceType.tiger ? PieceType.goat : PieceType.tiger;
+    _currentTurn =
+        from.type == PieceType.tiger ? PieceType.goat : PieceType.tiger;
     _selectedPiece = null;
     _validMoves = [];
     notifyListeners();
@@ -133,7 +135,9 @@ class AaduPuliProvider extends ChangeNotifier {
   }
 
   void makeComputerMove() {
-    if (_gameController != null && _gameMessage == null && _currentTurn == PieceType.tiger) {
+    if (_gameController != null &&
+        _gameMessage == null &&
+        _currentTurn == PieceType.tiger) {
       _gameController!.makeComputerMove();
     }
   }

@@ -3,7 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-class BackgroundAudioProvider extends ChangeNotifier with WidgetsBindingObserver {
+class BackgroundAudioProvider extends ChangeNotifier
+    with WidgetsBindingObserver {
   final AudioPlayer _player = AudioPlayer();
   final AudioPlayer _effectPlayer = AudioPlayer();
   bool _isPlaying = false;
